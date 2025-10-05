@@ -32,147 +32,62 @@ def test_health(client):
 
 @pytest.mark.dependency()
 def test_get_all(client):
-    result = call(client, 'orders')
+    result = call(client, 'billings')
     assert result['code'] == 200
-    assert result['json']['data']['orders'] == [
-      {
-        "created": "Tue, 10 Aug 2021 00:00:00 GMT", 
-        "customer_email": "cposkitt@smu.edu.sg", 
-        "order_id": 5, 
-        "order_items": [
-          {
-            "game_id": 1, 
-            "item_id": 9, 
-            "quantity": 2
-          }, 
-          {
-            "game_id": 2, 
-            "item_id": 10, 
-            "quantity": 1
-          }
-        ], 
-        "status": "NEW"
-      }, 
-      {
-        "created": "Tue, 10 Aug 2021 00:00:00 GMT", 
-        "customer_email": "phris@coskitt.com", 
-        "order_id": 6, 
-        "order_items": [
-          {
-            "game_id": 9, 
-            "item_id": 11, 
-            "quantity": 1
-          }
-        ], 
-        "status": "NEW"
-      }
-    ]
+    assert 'billings' in result['json']['data']
+    assert isinstance(result['json']['data']['billings'], list)
 
-
-# This is not a dependency per se (the tests can be
-# executed in any order). But if 'test_get_all' does
-# not pass, there's no point in running any other
-# test, so may as well skip them.
 
 @pytest.mark.dependency(depends=['test_get_all'])
 def test_one_valid(client):
-    result = call(client, 'orders/6')
+    result = call(client, 'billings/1')
     assert result['code'] == 200
-    assert result['json']['data'] == {
-    "created": "Tue, 10 Aug 2021 00:00:00 GMT", 
-    "customer_email": "phris@coskitt.com", 
-    "order_id": 6, 
-    "order_items": [
-      {
-        "game_id": 9, 
-        "item_id": 11, 
-        "quantity": 1
-      }
-    ], 
-    "status": "NEW"
-  }
+    data = result['json']['data']
+    assert 'billing_id' in data
+    assert 'customer_email' in data
+    assert 'amount' in data
+    assert 'status' in data
 
 
 @pytest.mark.dependency(depends=['test_get_all'])
 def test_one_invalid(client):
-    result = call(client, 'orders/2')
+    result = call(client, 'billings/999')
     assert result['code'] == 404
     assert result['json'] == {
-        "message": "Order not found."
+        "message": "Billing not found."
     }
 
 
 @pytest.mark.dependency(depends=['test_get_all'])
-def test_update_existing_order(client):
-    result = call(client, 'orders/6', 'PATCH', {
-        "status": "CANCELLED"
-    })
-    assert result['code'] == 200
-    assert result['json']['data']['customer_email'] == "phris@coskitt.com"
-    assert result['json']['data']['order_id'] == 6
-    assert result['json']['data']['status'] == 'CANCELLED'
-    assert result['json']['data']['order_items'] == [
-      {
-        "game_id": 9, 
-        "item_id": 11, 
-        "quantity": 1
-      }
-    ]
-
-
-@pytest.mark.dependency(depends=['test_get_all'])
 def test_create_no_body(client):
-    result = call(client, 'orders', 'POST', {})
-    assert result['code'] == 500
+    result = call(client, 'billings', 'POST', {})
+    assert result['code'] in (400, 500)  # depending on your API validation
+    assert 'message' in result['json']
 
 
 @pytest.mark.dependency(depends=['test_get_all', 'test_create_no_body'])
-def test_create_one_order(client):
-    result = call(client, 'orders', 'POST', {
-        "customer_email": "haniel@danley.com",
-        "cart_items": [
-            {
-                "game_id": 55,
-                "quantity": 88
-            }
-        ]
-    })
+def test_create_one_billing(client):
+    body = {
+        "customer_email": "alice@example.com",
+        "amount": 199.99,
+        "currency": "SGD",
+        "status": "PENDING",
+        "order_id": 6
+    }
+    result = call(client, 'billings', 'POST', body)
     assert result['code'] == 201
-    assert result['json']['data']['customer_email'] == "haniel@danley.com"
-    assert result['json']['data']['order_id'] == 7
-    assert result['json']['data']['status'] == 'NEW'
-    assert result['json']['data']['order_items'] == [
-            {
-                "item_id": 12,
-                "game_id": 55,
-                "quantity": 88
-            }
-        ]
+    data = result['json']['data']
+    assert data['customer_email'] == "alice@example.com"
+    assert data['amount'] == 199.99
+    assert data['currency'] == "SGD"
+    assert data['status'] == "PENDING"
 
 
-@pytest.mark.dependency(depends=['test_create_one_order'])
-def test_update_new_order(client):
-    call(client, 'orders', 'POST', {
-        "customer_email": "haniel@danley.com",
-        "cart_items": [
-            {
-                "game_id": 55,
-                "quantity": 88
-            }
-        ]
-    })
-    result = call(client, 'orders/7', 'PATCH', {
-        "status": "CANCELLED"
+@pytest.mark.dependency(depends=['test_create_one_billing'])
+def test_update_billing_status(client):
+    result = call(client, 'billings/1', 'PATCH', {
+        "status": "PAID"
     })
     assert result['code'] == 200
-    assert result['json']['data']['customer_email'] == "haniel@danley.com"
-    assert result['json']['data']['order_id'] == 7
-    assert result['json']['data']['status'] == 'CANCELLED'
-    assert result['json']['data']['order_items'] == [
-            {
-                "item_id": 12,
-                "game_id": 55,
-                "quantity": 88
-            }
-        ]
-
+    data = result['json']['data']
+    assert d
