@@ -1,40 +1,39 @@
 import pytest
-
+from sqlalchemy import text
 
 @pytest.fixture
 def client():
-    from src import app
+    from src import app  # assuming your Flask app is at src/app.py
 
     app.app.config['TESTING'] = True
-    
+
     with app.app.app_context():
-
         with app.db.engine.begin() as connection:
-            from sqlalchemy import text
-            connection.execute(text('DROP TABLE IF EXISTS `order`;'))
+            # Drop existing billing table (if any)
+            connection.execute(text('DROP TABLE IF EXISTS `billing`;'))
 
-            connection.execute(text('''CREATE TABLE `order` (
-                `order_id` int(11) NOT NULL AUTO_INCREMENT,
-                `customer_email` varchar(64) NOT NULL,
-                `status` varchar(10) NOT NULL,
-                `created` datetime NOT NULL,
-                PRIMARY KEY (`order_id`)
-                ) ENGINE=InnoDB AUTO_INCREMENT=7 DEFAULT CHARSET=utf8;'''))
+            # Create fresh billing table
+            connection.execute(text('''
+                CREATE TABLE `billing` (
+                    `billing_id` int(11) NOT NULL AUTO_INCREMENT,
+                    `incident_id` varchar(64) NOT NULL,
+                    `patient_id` varchar(64) NOT NULL,
+                    `amount` float DEFAULT NULL,
+                    `status` varchar(20) NOT NULL DEFAULT 'PENDING',
+                    `insurance_verified` tinyint(1) DEFAULT 0,
+                    `payment_reference` varchar(128) DEFAULT NULL,
+                    `created_at` datetime DEFAULT CURRENT_TIMESTAMP,
+                    `updated_at` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    PRIMARY KEY (`billing_id`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+            '''))
 
-            connection.execute(text('DROP TABLE IF EXISTS `order_item`;'))
-
-            connection.execute(text('''CREATE TABLE `order_item` (
-                `item_id` int(11) NOT NULL AUTO_INCREMENT,
-                `order_id` int(11) NOT NULL,
-                `game_id` int(11) NOT NULL,
-                `quantity` int(11) NOT NULL,
-                PRIMARY KEY (`item_id`)
-                ) ENGINE=InnoDB AUTO_INCREMENT=12 DEFAULT CHARSET=utf8;'''))
-
-            connection.execute(text('''INSERT INTO `order` (`order_id`, `customer_email`, `status`, `created`)
-                VALUES (5, 'cposkitt@smu.edu.sg', 'NEW', '2021-08-10'), (6, 'phris@coskitt.com', 'NEW', '2021-08-10');'''))
-
-            connection.execute(text('''INSERT INTO `order_item` (`item_id`, `order_id`, `game_id`, `quantity`)
-                VALUES (9, 5, 1, 2), (10, 5, 2, 1), (11, 6, 9, 1);'''))
+            # Seed some initial test data
+            connection.execute(text('''
+                INSERT INTO `billing` (`billing_id`, `incident_id`, `patient_id`, `amount`, `status`, `insurance_verified`, `payment_reference`, `created_at`, `updated_at`)
+                VALUES
+                (1, 'INC12345', 'PAT001', 250.00, 'PENDING', 0, NULL, '2025-10-05 10:00:00', '2025-10-05 10:00:00'),
+                (2, 'INC54321', 'PAT002', 500.00, 'VERIFIED', 1, NULL, '2025-10-05 10:05:00', '2025-10-05 10:05:00');
+            '''))
 
     return app.app.test_client()
