@@ -1,7 +1,8 @@
 # stripe_service.py
 import os
-import stripe
 from pathlib import Path
+
+import stripe
 from dotenv import load_dotenv
 
 # Load Stripe API key from environment variable
@@ -12,7 +13,11 @@ load_dotenv(dotenv_path=env_path)
 
 stripe.api_key = os.environ.get("STRIPE_SECRET_KEY")
 if not stripe.api_key:
-    raise RuntimeError(f"STRIPE_SECRET_KEY not found in environment. Tried loading from: {env_path}")
+    raise RuntimeError(
+        f"STRIPE_SECRET_KEY not found in environment. Tried loading from: {env_path}"
+    )
+
+
 def process_stripe_payment(
     amount, currency="usd", description="Medical billing payment"
 ):

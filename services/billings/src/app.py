@@ -1,10 +1,11 @@
 import os
 import socket
-from flask import Flask, request, jsonify
-from flask_sqlalchemy import SQLAlchemy
-from flask_cors import CORS
 from datetime import datetime
+
 import requests
+from flask import Flask, jsonify, request
+from flask_cors import CORS
+from flask_sqlalchemy import SQLAlchemy
 
 app = Flask(__name__)
 
@@ -61,13 +62,16 @@ class Billing(db.Model):
 def health_check():
     hostname = socket.gethostname()
     local_ip = socket.gethostbyname(hostname)
-    return jsonify(
-        {
-            "message": "Service is healthy.",
-            "service": "billings",
-            "ip_address": local_ip,
-        }
-    ), 200
+    return (
+        jsonify(
+            {
+                "message": "Service is healthy.",
+                "service": "billings",
+                "ip_address": local_ip,
+            }
+        ),
+        200,
+    )
 
 
 # --- Get all billings ---
@@ -108,9 +112,15 @@ def create_billing():
         db.session.commit()
         return jsonify({"data": billing.to_dict()}), 201
     except Exception as e:
-        return jsonify(
-            {"message": "An error occurred while creating billing.", "error": str(e)}
-        ), 500
+        return (
+            jsonify(
+                {
+                    "message": "An error occurred while creating billing.",
+                    "error": str(e),
+                }
+            ),
+            500,
+        )
 
 
 # --- Update billing status (e.g., insurance verified, paid, failed) ---
@@ -134,9 +144,12 @@ def update_billing(billing_id):
         db.session.commit()
         return jsonify({"data": billing.to_dict()}), 200
     except Exception as e:
-        return jsonify(
-            {"message": "An error occurred updating billing.", "error": str(e)}
-        ), 500
+        return (
+            jsonify(
+                {"message": "An error occurred updating billing.", "error": str(e)}
+            ),
+            500,
+        )
 
 
 # --- Insurance Verification (Saga Step 1) ---
@@ -165,32 +178,40 @@ def verify_insurance(billing_id):
 
         db.session.commit()
 
-        return jsonify(
-            {"data": billing.to_dict(), "insurance_response": response.json()}
-        ), response.status_code
+        return (
+            jsonify({"data": billing.to_dict(), "insurance_response": response.json()}),
+            response.status_code,
+        )
 
     except requests.exceptions.ConnectionError:
-        return jsonify(
-            {
-                "message": "Unable to reach insurance service.",
-                "service_url": INSURANCE_API_URL,
-            }
-        ), 503
+        return (
+            jsonify(
+                {
+                    "message": "Unable to reach insurance service.",
+                    "service_url": INSURANCE_API_URL,
+                }
+            ),
+            503,
+        )
     except Exception as e:
-        return jsonify(
-            {"message": "Insurance verification failed.", "error": str(e)}
-        ), 500
+        return (
+            jsonify({"message": "Insurance verification failed.", "error": str(e)}),
+            500,
+        )
 
 
 # --- Simulated Payment Processing (Saga Step 2) ---
-@app.route("/billings/<int:billing_id>/process-payment", methods=['POST'])
+@app.route("/billings/<int:billing_id>/process-payment", methods=["POST"])
 def process_payment(billing_id):
     billing = db.session.scalar(db.select(Billing).filter_by(billing_id=billing_id))
     if not billing:
         return jsonify({"message": "Billing not found."}), 404
 
     if not billing.insurance_verified:
-        return jsonify({"message": "Insurance not verified. Cannot process payment."}), 400
+        return (
+            jsonify({"message": "Insurance not verified. Cannot process payment."}),
+            400,
+        )
 
     try:
         from stripe_service import process_stripe_payment
@@ -199,26 +220,35 @@ def process_payment(billing_id):
         result = process_stripe_payment(billing.amount)
 
         if not result["success"]:
-            billing.status = 'PAYMENT_FAILED'
+            billing.status = "PAYMENT_FAILED"
             db.session.commit()
-            return jsonify({"message": "Stripe payment failed.", "error": result["error"]}), 400
+            return (
+                jsonify(
+                    {"message": "Stripe payment failed.", "error": result["error"]}
+                ),
+                400,
+            )
 
         # Update billing record
-        billing.status = 'PAID'
+        billing.status = "PAID"
         billing.payment_reference = result["payment_intent_id"]
         db.session.commit()
 
-        return jsonify({
-            "message": "Payment successful.",
-            "data": {
-                "billing": billing.to_dict(),
-                "stripe_client_secret": result["client_secret"]
-            }
-        }), 200
+        return (
+            jsonify(
+                {
+                    "message": "Payment successful.",
+                    "data": {
+                        "billing": billing.to_dict(),
+                        "stripe_client_secret": result["client_secret"],
+                    },
+                }
+            ),
+            200,
+        )
 
     except Exception as e:
         return jsonify({"message": "Payment processing failed.", "error": str(e)}), 500
-
 
 
 if __name__ == "__main__":
