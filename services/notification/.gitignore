@@ -1,0 +1,38 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+venv/
+.env
+.env.*
+
+# AWS credentials (if stored locally)
+*.pem
+*.csv
+aws_credentials/
+aws_config/
+
+# Docker
+*.log
+docker-compose.override.yml
+.DS_Store
+
+# Python packaging
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Jupyter Notebooks (optional, if you test locally)
+.ipynb_checkpoints
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# macOS
+.DS_Store
