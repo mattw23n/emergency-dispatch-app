@@ -1,6 +1,6 @@
 stages:
   - Static Analysis
-#  - Test
+  - Test
 #  - Release
 #  - Deploy
 
