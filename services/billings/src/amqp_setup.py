@@ -31,9 +31,9 @@ while not connected:
 print('CONNECTED!')
 
 try:
-    # Create an AMQP topic exchange for Notifications
+    # Declare Exchange (Always amqp.topic)
     channel = connection.channel()
-    exchange_name = "billings.notify.complete"
+    exchange_name = "amqp.topic"
     exchange_type = "topic"
     
     print(f'Creating exchange: {exchange_name}')
@@ -41,12 +41,13 @@ try:
                              exchange_type=exchange_type, durable=True)
     print(f'Exchange {exchange_name} created successfully!')
 
-    # Create a queue for customer notifications
+    # Declare Queue
     queue_name = 'Billings'
     print(f'Creating queue: {queue_name}')
     channel.queue_declare(queue=queue_name, durable=True)
     print(f'Queue {queue_name} created successfully!')
     
+    # Set binding for the Queue
     print(f'Binding queue {queue_name} to exchange {exchange_name}')
     channel.queue_bind(exchange=exchange_name,
                        queue=queue_name, routing_key='event.billing.#')
