@@ -1,0 +1,21 @@
+services:
+  ####################################
+  # mysql database  
+  ####################################
+  mysql:
+    image: mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: dispatch
+
+  ##################################
+  # Pytest on Dispatch Service
+  ##################################
+  dispatch-pytest:
+    build:
+      context: ../
+      dockerfile: ci/Dockerfile.test
+    depends_on:
+      - mysql
+    environment:
+      db_conn: mysql+mysqlconnector://root:root@mysql:3306
