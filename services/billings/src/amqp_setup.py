@@ -50,7 +50,7 @@ try:
     # Set binding for the Queue
     print(f'Binding queue {queue_name} to exchange {exchange_name}')
     channel.queue_bind(exchange=exchange_name,
-                       queue=queue_name, routing_key='event.billing.#')
+                       queue=queue_name, routing_key='event.billings.#')
     print('Queue binding completed successfully!')
     
     connection.close()
