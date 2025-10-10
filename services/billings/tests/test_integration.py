@@ -1,9 +1,12 @@
+"""Integration tests for billings service."""
+
 import json
 
 import pytest
 
 
 def call(client, path, method="GET", body=None):
+    """Make HTTP requests using the test client."""
     mimetype = "application/json"
     headers = {"Content-Type": mimetype, "Accept": mimetype}
 
@@ -24,12 +27,14 @@ def call(client, path, method="GET", body=None):
 
 @pytest.mark.dependency()
 def test_health(client):
+    """Test health check endpoint."""
     result = call(client, "health")
     assert result["code"] == 200
 
 
 @pytest.mark.dependency()
 def test_get_all(client):
+    """Test getting all billings."""
     result = call(client, "billings")
     assert result["code"] == 200
     assert "billings" in result["json"]["data"]
@@ -38,6 +43,7 @@ def test_get_all(client):
 
 @pytest.mark.dependency(depends=["test_get_all"])
 def test_one_valid(client):
+    """Test getting one valid billing."""
     result = call(client, "billings/1")
     assert result["code"] == 200
     data = result["json"]["data"]
@@ -49,6 +55,7 @@ def test_one_valid(client):
 
 @pytest.mark.dependency(depends=["test_get_all"])
 def test_one_invalid(client):
+    """Test getting non-existent billing."""
     result = call(client, "billings/999")
     assert result["code"] == 404
     assert result["json"] == {"message": "Billing not found."}
@@ -56,6 +63,7 @@ def test_one_invalid(client):
 
 @pytest.mark.dependency(depends=["test_get_all"])
 def test_create_no_body(client):
+    """Test creating billing with no body."""
     result = call(client, "billings", "POST", {})
     assert result["code"] in (400, 500)  # depending on your API validation
     assert "message" in result["json"]
@@ -63,6 +71,7 @@ def test_create_no_body(client):
 
 @pytest.mark.dependency(depends=["test_get_all", "test_create_no_body"])
 def test_create_one_billing(client):
+    """Test creating a new billing."""
     body = {
         "customer_email": "alice@example.com",
         "amount": 199.99,
@@ -81,6 +90,7 @@ def test_create_one_billing(client):
 
 @pytest.mark.dependency(depends=["test_create_one_billing"])
 def test_update_billing_status(client):
+    """Test updating billing status."""
     result = call(client, "billings/1", "PATCH", {"status": "PAID"})
     assert result["code"] == 200
     data = result["json"]["data"]

@@ -1,3 +1,4 @@
+"""Billing service API for managing medical billing and payments."""
 import os
 import socket
 from datetime import datetime
@@ -11,14 +12,19 @@ app = Flask(__name__)
 
 # --- Database Configuration ---
 if os.environ.get("db_conn"):
-    app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("db_conn") + "/billing"
+    app.config["SQLALCHEMY_DATABASE_URI"] = (
+        os.environ.get("db_conn") + "/billing"
+    )
 else:
     app.config["SQLALCHEMY_DATABASE_URI"] = (
         "mysql+mysqlconnector://cs302:cs302@localhost:3306/billing"
     )
 
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
-app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {"pool_size": 100, "pool_recycle": 280}
+app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
+    "pool_size": 100,
+    "pool_recycle": 280,
+}
 
 db = SQLAlchemy(app)
 CORS(app)
@@ -31,6 +37,8 @@ INSURANCE_API_URL = os.environ.get(
 
 # --- Models ---
 class Billing(db.Model):
+    """Billing model for storing billing records."""
+
     __tablename__ = "billing"
 
     billing_id = db.Column(db.Integer, primary_key=True)
@@ -41,9 +49,12 @@ class Billing(db.Model):
     insurance_verified = db.Column(db.Boolean, default=False)
     payment_reference = db.Column(db.String(128), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.now)
-    updated_at = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
+    updated_at = db.Column(
+        db.DateTime, default=datetime.now, onupdate=datetime.now
+    )
 
     def to_dict(self):
+        """Convert billing record to dictionary."""
         return {
             "billing_id": self.billing_id,
             "incident_id": self.incident_id,
@@ -60,6 +71,7 @@ class Billing(db.Model):
 # --- Health Check ---
 @app.route("/health")
 def health_check():
+    """Health check endpoint."""
     hostname = socket.gethostname()
     local_ip = socket.gethostbyname(hostname)
     return (
@@ -77,16 +89,25 @@ def health_check():
 # --- Get all billings ---
 @app.route("/billings")
 def get_all():
+    """Get all billing records."""
     billing_list = db.session.scalars(db.select(Billing)).all()
     if billing_list:
-        return jsonify({"data": {"billings": [b.to_dict() for b in billing_list]}}), 200
+        return (
+            jsonify(
+                {"data": {"billings": [b.to_dict() for b in billing_list]}}
+            ),
+            200,
+        )
     return jsonify({"message": "There are no billings."}), 404
 
 
 # --- Get a billing by ID ---
 @app.route("/billings/<int:billing_id>")
 def find_by_id(billing_id):
-    billing = db.session.scalar(db.select(Billing).filter_by(billing_id=billing_id))
+    """Find billing by ID."""
+    billing = db.session.scalar(
+        db.select(Billing).filter_by(billing_id=billing_id)
+    )
     if billing:
         return jsonify({"data": billing.to_dict()}), 200
     return jsonify({"message": "Billing not found."}), 404
@@ -95,6 +116,7 @@ def find_by_id(billing_id):
 # --- Create new billing ---
 @app.route("/billings", methods=["POST"])
 def create_billing():
+    """Create a new billing record."""
     try:
         data = request.get_json()
         incident_id = data.get("incident_id")
@@ -126,8 +148,11 @@ def create_billing():
 # --- Update billing status (e.g., insurance verified, paid, failed) ---
 @app.route("/billings/<int:billing_id>", methods=["PATCH"])
 def update_billing(billing_id):
+    """Update billing status."""
     billing = db.session.scalar(
-        db.select(Billing).with_for_update(of=Billing).filter_by(billing_id=billing_id)
+        db.select(Billing)
+        .with_for_update(of=Billing)
+        .filter_by(billing_id=billing_id)
     )
     if not billing:
         return jsonify({"message": "Billing not found."}), 404
@@ -146,7 +171,10 @@ def update_billing(billing_id):
     except Exception as e:
         return (
             jsonify(
-                {"message": "An error occurred updating billing.", "error": str(e)}
+                {
+                    "message": "An error occurred updating billing.",
+                    "error": str(e),
+                }
             ),
             500,
         )
@@ -155,7 +183,10 @@ def update_billing(billing_id):
 # --- Insurance Verification (Saga Step 1) ---
 @app.route("/billings/<int:billing_id>/verify-insurance", methods=["POST"])
 def verify_insurance(billing_id):
-    billing = db.session.scalar(db.select(Billing).filter_by(billing_id=billing_id))
+    """Verify insurance for a billing."""
+    billing = db.session.scalar(
+        db.select(Billing).filter_by(billing_id=billing_id)
+    )
     if not billing:
         return jsonify({"message": "Billing not found."}), 404
 
@@ -179,7 +210,12 @@ def verify_insurance(billing_id):
         db.session.commit()
 
         return (
-            jsonify({"data": billing.to_dict(), "insurance_response": response.json()}),
+            jsonify(
+                {
+                    "data": billing.to_dict(),
+                    "insurance_response": response.json(),
+                }
+            ),
             response.status_code,
         )
 
@@ -195,7 +231,12 @@ def verify_insurance(billing_id):
         )
     except Exception as e:
         return (
-            jsonify({"message": "Insurance verification failed.", "error": str(e)}),
+            jsonify(
+                {
+                    "message": "Insurance verification failed.",
+                    "error": str(e),
+                }
+            ),
             500,
         )
 
@@ -203,13 +244,22 @@ def verify_insurance(billing_id):
 # --- Simulated Payment Processing (Saga Step 2) ---
 @app.route("/billings/<int:billing_id>/process-payment", methods=["POST"])
 def process_payment(billing_id):
-    billing = db.session.scalar(db.select(Billing).filter_by(billing_id=billing_id))
+    """Process payment for a billing."""
+    billing = db.session.scalar(
+        db.select(Billing).filter_by(billing_id=billing_id)
+    )
     if not billing:
         return jsonify({"message": "Billing not found."}), 404
 
     if not billing.insurance_verified:
         return (
-            jsonify({"message": "Insurance not verified. Cannot process payment."}),
+            jsonify(
+                {
+                    "message": (
+                        "Insurance not verified. Cannot process payment."
+                    )
+                }
+            ),
             400,
         )
 
@@ -224,7 +274,10 @@ def process_payment(billing_id):
             db.session.commit()
             return (
                 jsonify(
-                    {"message": "Stripe payment failed.", "error": result["error"]}
+                    {
+                        "message": "Stripe payment failed.",
+                        "error": result["error"],
+                    }
                 ),
                 400,
             )
@@ -248,7 +301,15 @@ def process_payment(billing_id):
         )
 
     except Exception as e:
-        return jsonify({"message": "Payment processing failed.", "error": str(e)}), 500
+        return (
+            jsonify(
+                {
+                    "message": "Payment processing failed.",
+                    "error": str(e),
+                }
+            ),
+            500,
+        )
 
 
 if __name__ == "__main__":
