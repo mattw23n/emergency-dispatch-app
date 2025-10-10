@@ -2,6 +2,8 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from send_sns import send_notification
 
+import amqp_setup
+
 app = FastAPI(title="Notification Service")
 
 class Notification(BaseModel):
