@@ -8,6 +8,8 @@ from flask import Flask, jsonify, request
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
 
+import amqp_setup
+
 app = Flask(__name__)
 
 # --- Database Configuration ---
