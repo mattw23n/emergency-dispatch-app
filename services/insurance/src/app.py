@@ -1,3 +1,5 @@
+"""Insurance service API for managing insurance policies."""
+
 import os
 import socket
 from datetime import datetime
@@ -10,14 +12,19 @@ app = Flask(__name__)
 
 # --- Database Configuration ---
 if os.environ.get("db_conn"):
-    app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("db_conn") + "/insurance"
+    app.config["SQLALCHEMY_DATABASE_URI"] = (
+        os.environ.get("db_conn") + "/insurance"
+    )
 else:
     app.config["SQLALCHEMY_DATABASE_URI"] = (
         "mysql+mysqlconnector://cs302:cs302@localhost:3306/insurance"
     )
 
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
-app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {"pool_size": 100, "pool_recycle": 280}
+app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
+    "pool_size": 100,
+    "pool_recycle": 280,
+}
 
 db = SQLAlchemy(app)
 CORS(app)
@@ -25,6 +32,8 @@ CORS(app)
 
 # --- Models ---
 class InsurancePolicy(db.Model):
+    """Insurance policy model for storing policy records."""
+
     __tablename__ = "insurance_policies"
 
     policy_id = db.Column(db.Integer, primary_key=True)
@@ -33,9 +42,12 @@ class InsurancePolicy(db.Model):
     coverage_amount = db.Column(db.Float, nullable=False)
     policy_status = db.Column(db.String(20), nullable=False, default="ACTIVE")
     created_at = db.Column(db.DateTime, default=datetime.now)
-    updated_at = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
+    updated_at = db.Column(
+        db.DateTime, default=datetime.now, onupdate=datetime.now
+    )
 
     def to_dict(self):
+        """Convert policy record to dictionary."""
         return {
             "policy_id": self.policy_id,
             "patient_id": self.patient_id,
@@ -50,6 +62,7 @@ class InsurancePolicy(db.Model):
 # --- Health Check ---
 @app.route("/health")
 def health_check():
+    """Health check endpoint."""
     hostname = socket.gethostname()
     local_ip = socket.gethostbyname(hostname)
     return (
@@ -67,15 +80,22 @@ def health_check():
 # --- Get all policies ---
 @app.route("/insurance")
 def get_all_policies():
+    """Get all insurance policies."""
     policy_list = db.session.scalars(db.select(InsurancePolicy)).all()
     if policy_list:
-        return jsonify({"data": {"policies": [p.to_dict() for p in policy_list]}}), 200
+        return (
+            jsonify(
+                {"data": {"policies": [p.to_dict() for p in policy_list]}}
+            ),
+            200,
+        )
     return jsonify({"message": "There are no insurance policies."}), 404
 
 
 # --- Get one policy by ID ---
 @app.route("/insurance/<int:policy_id>")
 def find_by_id(policy_id):
+    """Find policy by ID."""
     policy = db.session.scalar(
         db.select(InsurancePolicy).filter_by(policy_id=policy_id)
     )
@@ -87,6 +107,7 @@ def find_by_id(policy_id):
 # --- Create a new policy ---
 @app.route("/insurance", methods=["POST"])
 def create_policy():
+    """Create a new insurance policy."""
     try:
         data = request.get_json()
         patient_id = data.get("patient_id")
@@ -110,7 +131,10 @@ def create_policy():
     except Exception as e:
         return (
             jsonify(
-                {"message": "An error occurred while creating policy.", "error": str(e)}
+                {
+                    "message": "An error occurred while creating policy.",
+                    "error": str(e),
+                }
             ),
             500,
         )
@@ -119,6 +143,7 @@ def create_policy():
 # --- Update policy status ---
 @app.route("/insurance/<int:policy_id>", methods=["PATCH"])
 def update_policy(policy_id):
+    """Update policy status."""
     policy = db.session.scalar(
         db.select(InsurancePolicy)
         .with_for_update(of=InsurancePolicy)
@@ -135,15 +160,19 @@ def update_policy(policy_id):
         db.session.commit()
         return jsonify({"data": policy.to_dict()}), 200
     except Exception as e:
-        return jsonify({"message": "Error updating policy.", "error": str(e)}), 500
+        return (
+            jsonify({"message": "Error updating policy.", "error": str(e)}),
+            500,
+        )
 
 
 # --- Verify Insurance (Endpoint for Billing service) ---
 @app.route("/insurance/verify", methods=["POST"])
 def verify_insurance():
-    """
-    This simulates an external insurance verification process.
-    Billing service would call this endpoint with patient_id, incident_id, and amount.
+    """Simulate an external insurance verification process.
+
+    Billing service calls this endpoint with patient_id,
+    incident_id, and amount.
     """
     try:
         data = request.get_json()
@@ -153,14 +182,18 @@ def verify_insurance():
         # Find active policy for patient
         policy = db.session.scalar(
             db.select(InsurancePolicy).filter_by(
-                patient_id=patient_id, policy_status="ACTIVE"
+                patient_id=patient_id,
+                policy_status="ACTIVE",
             )
         )
 
         if not policy:
             return (
                 jsonify(
-                    {"verified": False, "message": "No active insurance policy found."}
+                    {
+                        "verified": False,
+                        "message": "No active insurance policy found.",
+                    }
                 ),
                 404,
             )
@@ -181,14 +214,22 @@ def verify_insurance():
         else:
             return (
                 jsonify(
-                    {"verified": False, "message": "Amount exceeds coverage limit."}
+                    {
+                        "verified": False,
+                        "message": "Amount exceeds coverage limit.",
+                    }
                 ),
                 400,
             )
 
     except Exception as e:
         return (
-            jsonify({"message": "Insurance verification failed.", "error": str(e)}),
+            jsonify(
+                {
+                    "message": "Insurance verification failed.",
+                    "error": str(e),
+                }
+            ),
             500,
         )
 
