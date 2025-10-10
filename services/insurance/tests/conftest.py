@@ -7,12 +7,12 @@ from sqlalchemy import text
 @pytest.fixture
 def client():
     """Create test client with fresh database."""
-    from insurance import app
+    from src import app
 
-    app.config["TESTING"] = True
+    app.app.config["TESTING"] = True
 
     # Prepare a clean DB state before each test session
-    with app.app_context():
+    with app.app.app_context():
         with app.db.engine.begin() as connection:
             # Drop existing insurance table if exists
             connection.execute(
@@ -58,4 +58,4 @@ def client():
             )
 
     # Return Flask test client
-    return app.test_client()
+    return app.app.test_client()

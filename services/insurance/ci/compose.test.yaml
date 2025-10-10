@@ -6,12 +6,12 @@ services:
     image: mysql
     environment:
       MYSQL_ROOT_PASSWORD: root
-      MYSQL_DATABASE: order
+      MYSQL_DATABASE: insurance
 
   ##################################
-  # Pytest on Orders Service
+  # Pytest on Insurance Service
   ##################################
-  orders-pytest:
+  insurance-pytest:
     build:
       context: ../
       dockerfile: ci/Dockerfile.test
