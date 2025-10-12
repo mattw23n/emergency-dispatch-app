@@ -2,8 +2,8 @@ import pika
 import time
 from os import environ
 
-hostname = environ.get('rabbitmq_host') or 'localhost'
-port = int(environ.get('rabbitmq_port') or 5672)
+hostname = environ.get('RABBITMQ_HOST') or 'localhost'
+port = int(environ.get('RABBITMQ_PORT') or 5672)
 
 print(f'Attempting to connect to RabbitMQ at {hostname}:{port}')
 
