@@ -4,18 +4,37 @@ import time
 import random
 import uuid
 import sys
+import dotenv
+import os
+
+# -- JSON Payload Structure ---
+# {
+#   "userId": "1",
+#   "device": {
+#     "id": "wearable-1",
+#     "model": "HealthTracker v1"
+#   },
+#   "schemaVersion": "1.0",
+#   "timestampMs": 1760239531802,
+#   "metrics": {
+#     "heartRateBpm": 71,
+#     "spO2Percentage": 99.17,
+#     "respirationRateBpm": 15,
+#     "bodyTemperatureCelsius": 37.28,
+#     "stepsSinceLastReading": 13
+#   }
+# }
 
 # --- RabbitMQ Configuration ---
-RABBITMQ_HOST = 'localhost'
-RABBITMQ_USER = 'user'
-RABBITMQ_PASS = 'password'
-# We use a 'topic' exchange for flexible routing
+RABBITMQ_HOST = os.getenv('RABBITMQ_HOST', 'localhost')
+RABBITMQ_USER =  os.getenv('RABBITMQ_USER', 'guest')
+RABBITMQ_PASS = os.getenv('RABBITMQ_PASS', 'guest')
+
 EXCHANGE_NAME = 'health_data_exchange' 
 EXCHANGE_TYPE = 'topic'
 
 # --- Routing Keys ---
-# We'll use different routing keys to signify the data type
-ROUTING_KEY_NORMAL = 'wearable.data.vitals'
+ROUTING_KEY_NORMAL = 'wearable.data.dispatch'
 ROUTING_KEY_EMERGENCY = 'wearable.data.emergency'
 
 def generate_base_payload():
@@ -52,7 +71,7 @@ def generate_emergency_metrics():
         "spO2Percentage": round(random.uniform(85.0, 92.5), 2),
         "respirationRateBpm": random.randint(22, 30),
         "bodyTemperatureCelsius": round(random.uniform(36.0, 37.0), 2),
-        "stepsSinceLastReading": 0 # User is incapacitated
+        "stepsSinceLastReading": 0
     }
 
 def main(scenario):
@@ -76,7 +95,6 @@ def main(scenario):
     )
     channel = connection.channel()
 
-    # Declare the topic exchange. It's safe to run this every time.
     channel.exchange_declare(exchange=EXCHANGE_NAME, exchange_type=EXCHANGE_TYPE)
 
     try:
@@ -110,7 +128,6 @@ def main(scenario):
         print("Connection closed.")
 
 if __name__ == '__main__':
-    # Get the scenario from the command line arguments
     if len(sys.argv) > 1:
         scenario_arg = sys.argv[1].lower()
         main(scenario_arg)
