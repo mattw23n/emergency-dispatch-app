@@ -20,6 +20,7 @@ app = Flask(__name__)
 # Global reference to our publisher instance for the health check
 publisher_instance = None
 
+
 class WearablePublisher:
     """
     Manages the RabbitMQ connection and publishing loop in a separate thread.
@@ -27,7 +28,7 @@ class WearablePublisher:
     def __init__(self, scenario):
         if scenario not in ['normal', 'emergency']:
             raise ValueError("Scenario must be 'normal' or 'emergency'")
-        
+
         self.scenario = scenario
         self.messages_sent = 0
         self.connection = None
@@ -35,7 +36,7 @@ class WearablePublisher:
         self.is_running = True
         self.is_connected = False
         self.routing_key = ROUTING_KEY
-        
+
         if self.scenario == 'normal':
             self.metric_generator = self._generate_normal_metrics
         else:
@@ -45,16 +46,19 @@ class WearablePublisher:
         """Establishes connection and channel to RabbitMQ."""
         try:
             self.connection = pika.BlockingConnection(
-                pika.ConnectionParameters(host=RABBITMQ_HOST, port=RABBITMQ_PORT)
+                pika.ConnectionParameters(host=RABBITMQ_HOST,
+                                          port=RABBITMQ_PORT)
             )
             self.channel = self.connection.channel()
-            self.channel.exchange_declare(exchange=EXCHANGE_NAME, exchange_type=EXCHANGE_TYPE, durable=True)
+            self.channel.exchange_declare(exchange=EXCHANGE_NAME,
+                                          exchange_type=EXCHANGE_TYPE,
+                                          durable=True)
             self.is_connected = True
             print("--- Successfully connected to RabbitMQ ---")
         except pika.exceptions.AMQPConnectionError as e:
             print(f"Error: Could not connect to RabbitMQ: {e}")
             self.is_connected = False
-            time.sleep(5) # Wait before retrying
+            time.sleep(5)  # Wait before retrying
 
     def run_publisher_loop(self):
         """The main loop that generates and publishes messages."""
@@ -62,8 +66,8 @@ class WearablePublisher:
         while self.is_running:
             if not self.is_connected:
                 self._connect()
-                continue # Retry connection on the next loop iteration
-            
+                continue  # Retry connection on the next loop iteration
+
             try:
                 payload = self._generate_base_payload()
                 payload['timestampMs'] = int(time.time() * 1000)
@@ -79,9 +83,11 @@ class WearablePublisher:
                     ),
                 )
                 self.messages_sent += 1
-                print(f" [x] Sent message #{self.messages_sent} to routing key '{self.routing_key}'")
+                print(f" [x] Sent message #{self.messages_sent} "
+                      f"to routing key '{self.routing_key}'")
                 time.sleep(4)
-            except (pika.exceptions.StreamLostError, pika.exceptions.AMQPConnectionError) as e:
+            except (pika.exceptions.StreamLostError,
+                    pika.exceptions.AMQPConnectionError) as e:
                 print(f"Connection lost: {e}. Reconnecting...")
                 self.is_connected = False
             except Exception as e:
@@ -97,21 +103,30 @@ class WearablePublisher:
 
     # --- Data Generation Methods ---
     def _generate_base_payload(self):
-        return {"userId": "1", "device": {"id": "wearable-1", "model": "HealthTracker v1"}, "schemaVersion": "1.0"}
-    
+        return {
+            "userId": "1",
+            "device": {"id": "wearable-1", "model": "HealthTracker v1"},
+            "schemaVersion": "1.0"
+        }
+
     def _generate_normal_metrics(self):
         return {
-            "heartRateBpm": random.randint(60, 95), "spO2Percentage": round(random.uniform(96.0, 99.5), 2),
-            "respirationRateBpm": random.randint(12, 20), "bodyTemperatureCelsius": round(random.uniform(36.5, 37.5), 2),
+            "heartRateBpm": random.randint(60, 95),
+            "spO2Percentage": round(random.uniform(96.0, 99.5), 2),
+            "respirationRateBpm": random.randint(12, 20),
+            "bodyTemperatureCelsius": round(random.uniform(36.5, 37.5), 2),
             "stepsSinceLastReading": random.randint(0, 30)
         }
 
     def _generate_emergency_metrics(self):
         return {
-            "heartRateBpm": random.randint(140, 190), "spO2Percentage": round(random.uniform(85.0, 92.5), 2),
-            "respirationRateBpm": random.randint(22, 30), "bodyTemperatureCelsius": round(random.uniform(36.0, 37.0), 2),
+            "heartRateBpm": random.randint(140, 190),
+            "spO2Percentage": round(random.uniform(85.0, 92.5), 2),
+            "respirationRateBpm": random.randint(22, 30),
+            "bodyTemperatureCelsius": round(random.uniform(36.0, 37.0), 2),
             "stepsSinceLastReading": 0
         }
+
 
 @app.route('/health', methods=['GET'])
 def health_check():
@@ -126,7 +141,10 @@ def health_check():
         status_code = 200 if publisher_instance.is_connected else 503
         return jsonify(status), status_code
     else:
-        return jsonify({"status": "error", "message": "Publisher not initialized"}), 500
+        return jsonify({
+            "status": "error", "message": "Publisher not initialized"
+        }), 500
+
 
 def main():
     global publisher_instance
@@ -136,13 +154,16 @@ def main():
         return
 
     scenario = sys.argv[1].lower()
-    
+
     try:
         publisher_instance = WearablePublisher(scenario)
-        # Run the publisher in a daemon thread so it exits when the main app exits
-        publisher_thread = threading.Thread(target=publisher_instance.run_publisher_loop, daemon=True)
+        # Run the publisher in a daemon thread
+        # so it exits when the main app exits
+        publisher_thread = threading.Thread(
+            target=publisher_instance.run_publisher_loop,
+            daemon=True)
         publisher_thread.start()
-        
+
         # Start the Flask server in the main thread
         # Use host='0.0.0.0' to make it accessible from outside a container
         app.run(host='0.0.0.0', port=5000)
@@ -154,6 +175,7 @@ def main():
     finally:
         if publisher_instance:
             publisher_instance.stop()
+
 
 if __name__ == '__main__':
     main()

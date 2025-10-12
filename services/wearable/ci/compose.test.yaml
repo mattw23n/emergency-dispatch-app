@@ -1,0 +1,10 @@
+
+services:
+  ##################################
+  # Pytest on Wearable Service
+  ##################################
+  
+  wearable-pytest:
+    build:
+      context: ../
+      dockerfile: ci/Dockerfile.test
