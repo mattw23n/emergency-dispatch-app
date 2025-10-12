@@ -149,7 +149,7 @@ def health_check():
 def main():
     global publisher_instance
     if len(sys.argv) < 2:
-        print("Usage: python wearable_simulator.py <scenario>")
+        print("Usage: python app.py <scenario>")
         print("Available scenarios: normal, emergency")
         return
 

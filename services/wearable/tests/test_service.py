@@ -20,8 +20,8 @@ def rabbitmq_connection():
 
 @pytest.fixture
 def simulator_process():
-    """Fixture to run the wearable_simulator.py script in the background."""
-    process = subprocess.Popen(['python', 'wearable_simulator.py', 'normal'])
+    """Fixture to run the app.py script in the background."""
+    process = subprocess.Popen(['python', 'src/app.py', 'normal'])
     # Give the simulator a moment to start up and connect
     time.sleep(3)
     yield process
