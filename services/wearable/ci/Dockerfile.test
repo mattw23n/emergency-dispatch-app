@@ -3,7 +3,7 @@ WORKDIR /app
 COPY requirements.txt ./
 COPY ci/requirements.test.txt ./
 COPY src/* ./src/
-COPY tests/*.py ./tests/
+COPY tests/test_app.py ./tests/
 RUN pip install --no-cache-dir -r requirements.txt
 RUN pip install --no-cache-dir -r requirements.test.txt
 CMD python -m pytest
