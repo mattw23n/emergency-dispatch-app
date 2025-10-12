@@ -50,7 +50,7 @@ try:
     # Set binding for the Queue
     print(f'Binding queue {queue_name} to exchange {exchange_name}')
     channel.queue_bind(exchange=exchange_name,
-                       queue=queue_name, routing_key='wearable.data.dispatch')
+                       queue=queue_name, routing_key='wearable.data')
     print('Queue binding completed successfully!')
     
     print(f'Binding queue {queue_name} to exchange {exchange_name}')
