@@ -1,8 +1,6 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from send_sns import send_notification
-
-import amqp_setup
+from .send_sns import send_notification
 
 app = FastAPI(title="Notification Service")
 
@@ -10,6 +8,15 @@ class Notification(BaseModel):
     patient_id: str
     subject: str
     message: str
+
+@app.on_event("startup")
+def init_rabbitmq():
+    """Ensure RabbitMQ setup runs once when the service starts"""
+    from . import amqp_setup
+
+@app.get("/health")
+def health_check():
+    return {"status": "ok"}
 
 @app.post("/notify")
 def notify(req: Notification):
