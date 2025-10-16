@@ -36,6 +36,38 @@ This Flask app provides dynamic hospital management and ambulance dispatch with 
 
 ## Setup
 
+### Option 1: Docker Compose (Recommended)
+
+1. **Copy environment file (optional):**
+```cmd
+copy .env.example .env
+```
+Edit `.env` and add your Google Maps API key if needed.
+
+2. **Start the service:**
+```cmd
+docker-compose up -d
+```
+
+3. **Check status:**
+```cmd
+docker-compose ps
+docker-compose logs -f dispatch-service
+```
+
+4. **Access the API:**
+- Service: http://localhost:8080
+- Health check: http://localhost:8080/
+
+5. **Stop the service:**
+```cmd
+docker-compose down
+```
+
+To use MySQL instead of SQLite, uncomment the `mysql` service section in `docker-compose.yml`.
+
+### Option 2: Local Development
+
 1. Install dependencies:
 ```cmd
 python -m venv .venv
@@ -56,7 +88,12 @@ pytest -v
 ```
 
 ## Google Maps (optional)
-Set environment variable:
+**With Docker:** Add to `.env` file:
+```
+GOOGLE_MAPS_API_KEY=your_key_here
+```
+
+**Local development:**
 ```cmd
 set GOOGLE_MAPS_API_KEY=your_key_here
 ```
