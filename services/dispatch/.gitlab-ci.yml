@@ -1,9 +1,8 @@
-
 stages:
   - Static Analysis
-  # - Test
-  # - Release
-  # - Deploy
+  - Test
+  - Release
+  - Deploy
 
 flake8:
   stage: Static Analysis
@@ -17,6 +16,7 @@ flake8:
     when: on_failure
     paths:
       - flake8_report.txt
+
 pylint:
   stage: Static Analysis
   image: python:3.13-slim
