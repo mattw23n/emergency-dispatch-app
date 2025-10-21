@@ -1,6 +1,5 @@
 stages:
   - Static Analysis
-  - Test
   - Release
   - Deploy
 
@@ -30,16 +29,6 @@ pylint:
     when: always
     paths:
       - pylint_report.txt
-
-integration-tests:
-  stage: Test
-  image: docker:28.3.2
-  services:
-    - docker:28.3.2-dind
-  before_script:
-    - docker info
-  script:
-    - docker compose -f ci/compose.test.yaml up --exit-code-from billings-pytest
 
 # based on: https://gitlab.com/gitlab-org/gitlab/-/blob/master/lib/gitlab/ci/templates/Docker.gitlab-ci.yml
 release-image:

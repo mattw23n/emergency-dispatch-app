@@ -1,318 +1,394 @@
-"""Billing service API for managing medical billing and payments."""
+import datetime
+import json
 import os
-import socket
-from datetime import datetime
+import signal
+import sys
+from os import environ
+from urllib.parse import urlparse
 
-import requests
-from flask import Flask, jsonify, request
-from flask_cors import CORS
-from flask_sqlalchemy import SQLAlchemy
+import mysql.connector
+import pika
 
 import amqp_setup
 
-app = Flask(__name__)
+# Create a singleton instance
+amqp = amqp_setup.AMQPSetup()
 
-# --- Database Configuration ---
-if os.environ.get("db_conn"):
-    app.config["SQLALCHEMY_DATABASE_URI"] = (
-        os.environ.get("db_conn") + "/billing"
-    )
-else:
-    app.config["SQLALCHEMY_DATABASE_URI"] = (
-        "mysql+mysqlconnector://cs302:cs302@localhost:3306/billing"
-    )
+db_url = urlparse(environ.get("db_conn"))
 
-app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
-app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
-    "pool_size": 100,
-    "pool_recycle": 280,
-}
+# Flag to control the consumer loop
+should_stop = False
 
-db = SQLAlchemy(app)
-CORS(app)
 
-# --- External Service Configuration ---
+def signal_handler(sig, frame):
+    global should_stop
+    print("Stopping consumer...")
+    should_stop = True
+
+
+# Register signal handlers
+signal.signal(signal.SIGINT, signal_handler)
+signal.signal(signal.SIGTERM, signal_handler)
+
+
 INSURANCE_API_URL = os.environ.get(
     "INSURANCE_API_URL", "http://localhost:5200/insurance/verify"
 )
 
 
-# --- Models ---
-class Billing(db.Model):
-    """Billing model for storing billing records."""
-
-    __tablename__ = "billing"
-
-    billing_id = db.Column(db.Integer, primary_key=True)
-    incident_id = db.Column(db.String(64), nullable=False)
-    patient_id = db.Column(db.String(64), nullable=False)
-    amount = db.Column(db.Float, nullable=True)
-    status = db.Column(db.String(20), nullable=False, default="PENDING")
-    insurance_verified = db.Column(db.Boolean, default=False)
-    payment_reference = db.Column(db.String(128), nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.now)
-    updated_at = db.Column(
-        db.DateTime, default=datetime.now, onupdate=datetime.now
-    )
-
-    def to_dict(self):
-        """Convert billing record to dictionary."""
-        return {
-            "billing_id": self.billing_id,
-            "incident_id": self.incident_id,
-            "patient_id": self.patient_id,
-            "amount": self.amount,
-            "status": self.status,
-            "insurance_verified": self.insurance_verified,
-            "payment_reference": self.payment_reference,
-            "created_at": self.created_at,
-            "updated_at": self.updated_at,
-        }
-
-
-# --- Health Check ---
-@app.route("/health")
-def health_check():
-    """Health check endpoint."""
-    hostname = socket.gethostname()
-    local_ip = socket.gethostbyname(hostname)
-    return (
-        jsonify(
-            {
-                "message": "Service is healthy.",
-                "service": "billings",
-                "ip_address": local_ip,
-            }
-        ),
-        200,
-    )
-
-
-# --- Get all billings ---
-@app.route("/billings")
-def get_all():
-    """Get all billing records."""
-    billing_list = db.session.scalars(db.select(Billing)).all()
-    if billing_list:
-        return (
-            jsonify(
-                {"data": {"billings": [b.to_dict() for b in billing_list]}}
-            ),
-            200,
-        )
-    return jsonify({"message": "There are no billings."}), 404
-
-
-# --- Get a billing by ID ---
-@app.route("/billings/<int:billing_id>")
-def find_by_id(billing_id):
-    """Find billing by ID."""
-    billing = db.session.scalar(
-        db.select(Billing).filter_by(billing_id=billing_id)
-    )
-    if billing:
-        return jsonify({"data": billing.to_dict()}), 200
-    return jsonify({"message": "Billing not found."}), 404
-
-
-# --- Create new billing ---
-@app.route("/billings", methods=["POST"])
-def create_billing():
-    """Create a new billing record."""
+def callback(ch, method, properties, body):
+    """Process billing initiation message."""
     try:
-        data = request.get_json()
-        incident_id = data.get("incident_id")
-        patient_id = data.get("patient_id")
-        amount = data.get("amount")
+        message_body = json.loads(body)
+        incident_id = message_body["incident_id"]
+        patient_id = message_body["patient_id"]
+        amount = message_body["amount"]
 
-        billing = Billing(
-            incident_id=incident_id,
-            patient_id=patient_id,
-            amount=amount,
-            status="PENDING",
+        # Connect to DB and create billing record
+        cnx = mysql.connector.connect(
+            user=db_url.username,
+            password=db_url.password,
+            host=db_url.hostname,
+            port=db_url.port,
+            database="billing",
+        )
+        cursor = cnx.cursor()
+
+        # Insert new billing
+        cursor.execute(
+            """
+            INSERT INTO billing (incident_id, patient_id, amount)
+            VALUES (%s, %s, %s)
+        """,
+            (incident_id, patient_id, amount),
+        )
+        cnx.commit()
+
+        # Get the inserted billing_id
+        billing_id = cursor.lastrowid
+        cnx.close()
+
+        print(
+            f"SUCCESS: Created billing {billing_id} for patient {patient_id}, amount {amount}"
         )
 
-        db.session.add(billing)
-        db.session.commit()
-        return jsonify({"data": billing.to_dict()}), 201
-    except Exception as e:
-        return (
-            jsonify(
-                {
-                    "message": "An error occurred while creating billing.",
-                    "error": str(e),
-                }
-            ),
-            500,
-        )
+        # 1. Call insurance verification
+        insurance_verified = verify_insurance(incident_id, patient_id)
 
+        # 2. Process payment if insurance is verified
+        payment_reference = None
+        if insurance_verified:
+            try:
+                # Convert amount to cents for Stripe
+                amount_in_cents = int(float(amount) * 100)
+                payment_reference = process_payment(
+                    patient_id=patient_id,
+                    amount=amount_in_cents,
+                    description=f"Billing for incident {incident_id}",
+                )
+                status = "PAID"
+                print(
+                    f"SUCCESS: Payment processed for billing {billing_id}, reference: {payment_reference}"
+                )
 
-# --- Update billing status (e.g., insurance verified, paid, failed) ---
-@app.route("/billings/<int:billing_id>", methods=["PATCH"])
-def update_billing(billing_id):
-    """Update billing status."""
-    billing = db.session.scalar(
-        db.select(Billing)
-        .with_for_update(of=Billing)
-        .filter_by(billing_id=billing_id)
-    )
-    if not billing:
-        return jsonify({"message": "Billing not found."}), 404
-
-    data = request.get_json()
-    if "status" in data:
-        billing.status = data["status"]
-    if "insurance_verified" in data:
-        billing.insurance_verified = data["insurance_verified"]
-    if "payment_reference" in data:
-        billing.payment_reference = data["payment_reference"]
-
-    try:
-        db.session.commit()
-        return jsonify({"data": billing.to_dict()}), 200
-    except Exception as e:
-        return (
-            jsonify(
-                {
-                    "message": "An error occurred updating billing.",
-                    "error": str(e),
-                }
-            ),
-            500,
-        )
-
-
-# --- Insurance Verification (Saga Step 1) ---
-@app.route("/billings/<int:billing_id>/verify-insurance", methods=["POST"])
-def verify_insurance(billing_id):
-    """Verify insurance for a billing."""
-    billing = db.session.scalar(
-        db.select(Billing).filter_by(billing_id=billing_id)
-    )
-    if not billing:
-        return jsonify({"message": "Billing not found."}), 404
-
-    try:
-        # Call the Insurance Service
-        payload = {
-            "patient_id": billing.patient_id,
-            "incident_id": billing.incident_id,
-            "amount": billing.amount,
-        }
-
-        response = requests.post(INSURANCE_API_URL, json=payload, timeout=5)
-
-        if response.status_code == 200 and response.json().get("verified"):
-            billing.insurance_verified = True
-            billing.status = "VERIFIED"
-        else:
-            billing.insurance_verified = False
-            billing.status = "INSURANCE_FAILED"
-
-        db.session.commit()
-
-        return (
-            jsonify(
-                {
-                    "data": billing.to_dict(),
-                    "insurance_response": response.json(),
-                }
-            ),
-            response.status_code,
-        )
-
-    except requests.exceptions.ConnectionError:
-        return (
-            jsonify(
-                {
-                    "message": "Unable to reach insurance service.",
-                    "service_url": INSURANCE_API_URL,
-                }
-            ),
-            503,
-        )
-    except Exception as e:
-        return (
-            jsonify(
-                {
-                    "message": "Insurance verification failed.",
-                    "error": str(e),
-                }
-            ),
-            500,
-        )
-
-
-# --- Simulated Payment Processing (Saga Step 2) ---
-@app.route("/billings/<int:billing_id>/process-payment", methods=["POST"])
-def process_payment(billing_id):
-    """Process payment for a billing."""
-    billing = db.session.scalar(
-        db.select(Billing).filter_by(billing_id=billing_id)
-    )
-    if not billing:
-        return jsonify({"message": "Billing not found."}), 404
-
-    if not billing.insurance_verified:
-        return (
-            jsonify(
-                {
-                    "message": (
-                        "Insurance not verified. Cannot process payment."
-                    )
-                }
-            ),
-            400,
-        )
-
-    try:
-        from stripe_service import process_stripe_payment
-
-        # Call Stripe to create a payment intent
-        result = process_stripe_payment(billing.amount)
-
-        if not result["success"]:
-            billing.status = "PAYMENT_FAILED"
-            db.session.commit()
-            return (
-                jsonify(
+                # Publish payment completion notification
+                notification_msg = json.dumps(
                     {
-                        "message": "Stripe payment failed.",
-                        "error": result["error"],
+                        "billing_id": billing_id,
+                        "incident_id": incident_id,
+                        "patient_id": patient_id,
+                        "amount": amount,
+                        "status": "COMPLETED",
+                        "payment_reference": payment_reference,
+                        "timestamp": datetime.datetime.utcnow().isoformat(),
                     }
-                ),
-                400,
+                )
+                amqp.publish_notification(
+                    message=notification_msg, routing_key="billing.completed"
+                )
+
+            except Exception as e:
+                error_msg = str(e)
+                print(f"FAIL: Payment processing failed: {error_msg}")
+                if "card was declined" in error_msg.lower():
+                    status = "PAYMENT_DECLINED"
+                else:
+                    status = "PAYMENT_FAILED"
+
+                # Publish payment failure notification
+                try:
+                    notification_msg = json.dumps(
+                        {
+                            "billing_id": billing_id,
+                            "incident_id": incident_id,
+                            "patient_id": patient_id,
+                            "amount": amount,
+                            "status": "FAILED",
+                            "error": error_msg,
+                            "timestamp": datetime.datetime.utcnow().isoformat(),
+                        }
+                    )
+                    amqp.publish_notification(
+                        message=notification_msg, routing_key="billing.failed"
+                    )
+                except Exception as notify_err:
+                    print(f"WARNING: Failed to send failure notification: {notify_err}")
+        else:
+            status = "INSURANCE_VERIFICATION_FAILED"
+            print(f"INFO: Insurance verification failed for billing {billing_id}")
+
+            # Publish insurance verification failure notification
+            try:
+                notification_msg = json.dumps(
+                    {
+                        "billing_id": billing_id,
+                        "incident_id": incident_id,
+                        "patient_id": patient_id,
+                        "amount": amount,
+                        "status": "INSURANCE_VERIFICATION_FAILED",
+                        "timestamp": datetime.datetime.utcnow().isoformat(),
+                    }
+                )
+                amqp.publish_notification(
+                    message=notification_msg, routing_key="billing.failed"
+                )
+            except Exception as notify_err:
+                print(
+                    f"WARNING: Failed to send insurance verification failure notification: {notify_err}"
+                )
+
+        # 3. Update billing record with verification and payment status
+        update_billing_status(billing_id, insurance_verified, payment_reference, status)
+
+    except mysql.connector.Error as err:
+        print(f"FAIL: Could not process billing: {err}")
+    except Exception as e:
+        print(f"FAIL: Unexpected error: {str(e)}")
+
+
+def update_billing_status(billing_id, insurance_verified, payment_reference, status):
+    """Update billing record with verification and payment status."""
+    try:
+        cnx = mysql.connector.connect(
+            user=db_url.username,
+            password=db_url.password,
+            host=db_url.hostname,
+            port=db_url.port,
+            database="billing",
+        )
+        cursor = cnx.cursor()
+
+        cursor.execute(
+            """
+            UPDATE billing
+            SET status = %s,
+                insurance_verified = %s,
+                payment_reference = %s,
+                updated_at = NOW()
+            WHERE billing_id = %s
+        """,
+            (status, insurance_verified, payment_reference, billing_id),
+        )
+
+        cnx.commit()
+        print(f"Updated billing {billing_id} with status: {status}")
+
+    except mysql.connector.Error as err:
+        print(f"Error updating billing status: {err}")
+        raise
+    finally:
+        if "cnx" in locals() and cnx.is_connected():
+            cursor.close()
+            cnx.close()
+    try:
+        # Ensure connection is established
+        amqp.connect()
+
+        # Set up consumer
+        amqp.channel.basic_consume(
+            queue=amqp.queue_name, on_message_callback=callback, auto_ack=True
+        )
+
+        print(" [*] Waiting for messages. To exit press CTRL+C")
+
+        # Start consuming
+        while not should_stop:
+            try:
+                # Process any pending events and sleep for 1 second
+                amqp.connection.process_data_events()
+                amqp.connection.sleep(1)
+            except pika.exceptions.AMQPConnectionError:
+                print("Connection lost. Attempting to reconnect...")
+                amqp.connect()
+                amqp.channel.basic_consume(
+                    queue=amqp.queue_name, on_message_callback=callback, auto_ack=True
+                )
+
+    except KeyboardInterrupt:
+        print("Interrupted")
+    except Exception as e:
+        print(f"Error in consumer: {e}")
+    finally:
+        if hasattr(amqp, "connection") and amqp.connection and amqp.connection.is_open:
+            amqp.close()
+        sys.exit(0)
+
+
+def verify_insurance(incident_id, patient_id, amount=None):
+    """
+    Verify insurance coverage with the insurance service.
+
+    Args:
+        incident_id (str): The ID of the incident being billed
+        patient_id (str): The ID of the patient
+        amount (float, optional): The amount to verify coverage for. If not provided,
+                                will be fetched from the billing record.
+
+    Returns:
+        bool: True if insurance verification is successful, False otherwise
+    """
+    import requests
+
+    try:
+        print(f"Verifying insurance for incident {incident_id}, patient {patient_id}")
+
+        # If amount is not provided, fetch it from the billing record
+        if amount is None:
+            cnx = mysql.connector.connect(
+                user=db_url.username,
+                password=db_url.password,
+                host=db_url.hostname,
+                port=db_url.port,
+                database="billing",
+            )
+            cursor = cnx.cursor(dictionary=True)
+
+            cursor.execute(
+                """
+                SELECT amount FROM billing
+                WHERE incident_id = %s AND patient_id = %s
+                ORDER BY created_at DESC LIMIT 1
+                """,
+                (incident_id, patient_id),
             )
 
-        # Update billing record
-        billing.status = "PAID"
-        billing.payment_reference = result["payment_intent_id"]
-        db.session.commit()
+            result = cursor.fetchone()
+            cursor.close()
+            cnx.close()
 
-        return (
-            jsonify(
-                {
-                    "message": "Payment successful.",
-                    "data": {
-                        "billing": billing.to_dict(),
-                        "stripe_client_secret": result["client_secret"],
-                    },
-                }
-            ),
-            200,
+            if not result:
+                print(
+                    f"No billing record found for incident {incident_id} and patient {patient_id}"
+                )
+                return False
+
+            amount = float(result["amount"])
+
+        # Prepare the request to insurance service
+        headers = {"Content-Type": "application/json"}
+        payload = {
+            "patient_id": patient_id,
+            "incident_id": incident_id,
+            "amount": amount,
+        }
+
+        print(f"Sending verification request to {INSURANCE_API_URL}")
+        response = requests.post(
+            INSURANCE_API_URL,
+            json=payload,
+            headers=headers,
+            timeout=10,  # 10 seconds timeout
         )
+
+        # Check if the request was successful
+        response.raise_for_status()
+
+        # Parse the response
+        result = response.json()
+
+        if result.get("verified"):
+            print(
+                f"Insurance verification successful: {
+                    result.get(
+                        'message',
+                        '')}"
+            )
+            return True
+        else:
+            print(
+                f"Insurance verification failed: {
+                    result.get(
+                        'message',
+                        'Unknown error')}"
+            )
+            return False
+
+    except requests.exceptions.RequestException as e:
+        print(f"Error communicating with insurance service: {str(e)}")
+        return False
+    except Exception as e:
+        print(f"Unexpected error during insurance verification: {str(e)}")
+        return False
+
+
+def process_payment(patient_id, amount, description):
+    """Process payment using Stripe."""
+    from stripe_service import process_stripe_payment
+
+    try:
+        # Convert amount from cents to dollars for the service
+        amount_dollars = float(amount) / 100
+
+        # Call Stripe service to process payment
+        result = process_stripe_payment(amount=amount_dollars, description=description)
+
+        if result["success"]:
+            return result["payment_intent_id"]
+        else:
+            error_msg = result.get("error", "Unknown error")
+            print(f"Payment processing failed: {error_msg}")
+            raise Exception(f"Payment failed: {error_msg}")
 
     except Exception as e:
-        return (
-            jsonify(
-                {
-                    "message": "Payment processing failed.",
-                    "error": str(e),
-                }
-            ),
-            500,
+        print(f"Error in process_payment: {str(e)}")
+        raise
+
+
+def consume():
+    """Start the RabbitMQ consumer."""
+    try:
+        # Ensure connection is established
+        amqp.connect()
+
+        # Set up consumer
+        amqp.channel.basic_consume(
+            queue=amqp.queue_name, on_message_callback=callback, auto_ack=True
         )
+
+        print(" [*] Waiting for messages. To exit press CTRL+C")
+
+        # Start consuming
+        while not should_stop:
+            try:
+                # Process any pending events and sleep for 1 second
+                amqp.connection.process_data_events()
+                amqp.connection.sleep(1)
+            except pika.exceptions.AMQPConnectionError:
+                print("Connection lost. Attempting to reconnect...")
+                amqp.connect()
+                amqp.channel.basic_consume(
+                    queue=amqp.queue_name, on_message_callback=callback, auto_ack=True
+                )
+
+    except KeyboardInterrupt:
+        print("Interrupted")
+    except Exception as e:
+        print(f"Error in consumer: {e}")
+    finally:
+        if hasattr(amqp, "connection") and amqp.connection and amqp.connection.is_open:
+            amqp.close()
+        sys.exit(0)
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5100, debug=True)
+    consume()
