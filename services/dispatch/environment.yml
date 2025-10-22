@@ -1,0 +1,8 @@
+name: cs302-g2t5
+channels: [conda-forge, defaults]
+dependencies:
+  - python=3.12.9
+  - pip
+  - pip:
+      - -r requirements.txt
+      - -r requirements-dev.txt
