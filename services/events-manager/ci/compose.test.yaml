@@ -1,0 +1,22 @@
+services:
+  ####################################
+  # mysql database  
+  ####################################
+  mysql:
+    image: mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: os.environ.get('MYSQL_ROOT_PASSWORD')
+      MYSQL_DATABASE: os.environ.get('MYSQL_DATABASE')
+
+  ##################################
+  # Pytest on events-manager service
+  ##################################
+  events-manager-pytest:
+    build:
+      context: ../
+      dockerfile: ci/Dockerfile.test
+    depends_on:
+      - mysql
+    environment:
+      db_conn: mysql+mysqlconnector://root:root@mysql:3306
+
