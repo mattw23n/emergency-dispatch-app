@@ -13,6 +13,52 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy import String, Float, Integer
 
 import amqp_setup
+import pika
+import json
+from datetime import datetime
+
+# Initialize RabbitMQ connection for publishing events
+def get_amqp_channel():
+    """Get a new AMQP channel for publishing events."""
+    try:
+        hostname = os.environ.get('RABBITMQ_HOST', 'localhost')
+        port = int(os.environ.get('RABBITMQ_PORT', 5672))
+        parameters = pika.ConnectionParameters(host=hostname, port=port)
+        connection = pika.BlockingConnection(parameters)
+        channel = connection.channel()
+        return connection, channel
+    except Exception as e:
+        print(f"Failed to connect to RabbitMQ: {e}")
+        return None, None
+
+
+def publish_event(routing_key: str, message: dict):
+    """Publish an event to the AMQP exchange."""
+    try:
+        connection, channel = get_amqp_channel()
+        if not channel:
+            print(f"Cannot publish event {routing_key}: no channel available")
+            return False
+        
+        exchange_name = "amqp.topic"
+        message['timestamp'] = datetime.utcnow().isoformat()
+        
+        channel.basic_publish(
+            exchange=exchange_name,
+            routing_key=routing_key,
+            body=json.dumps(message),
+            properties=pika.BasicProperties(
+                delivery_mode=2,  # make message persistent
+                content_type='application/json'
+            )
+        )
+        print(f"Published event to {routing_key}: {message}")
+        connection.close()
+        return True
+    except Exception as e:
+        print(f"Failed to publish event to {routing_key}: {e}")
+        return False
+
 
 class Base(DeclarativeBase):
     pass
@@ -256,6 +302,7 @@ def create_app(db_uri: str = "sqlite:///hospitals.db") -> Flask:
     def dispatch_ambulance():
         payload = request.get_json(force=True) or {}
         patient_loc = payload.get("patient_location")
+        patient_id = payload.get("patient_id", f"patient-{uuid.uuid4().hex[:8]}")
         hospital_id = payload.get("hospital_id")
         use_google = bool(payload.get("use_google", False))
         # allow request override of API key, otherwise fall back to env var
@@ -289,16 +336,119 @@ def create_app(db_uri: str = "sqlite:///hospitals.db") -> Flask:
             route_data = {"from": patient_loc, "to": {"lat": hospital.lat, "lng": hospital.lng}}
 
         dispatch_id = str(uuid.uuid4())
+        ambulance_id = f"amb-{dispatch_id[:8]}"
         ambulance = {
-            "ambulance_id": f"amb-{dispatch_id[:8]}",
+            "ambulance_id": ambulance_id,
             "eta_minutes": eta_min,
             "distance_km": round(dist, 3),
             "route": route_data,
         }
 
-        # In a real system this would publish a DispatchAmbulance event to a broker.
+        # Publish dispatch events to message broker
+        # Event 1: Hospital Found
+        publish_event("dispatch.updates.hospital_found", {
+            "dispatch_id": dispatch_id,
+            "patient_id": patient_id,
+            "hospital_id": hospital_id,
+            "hospital_name": hospital.name,
+            "hospital_location": {"lat": hospital.lat, "lng": hospital.lng},
+            "distance_km": round(dist, 3)
+        })
+
+        # Event 2: Ambulance Sent
+        publish_event("dispatch.updates.ambulance_sent", {
+            "dispatch_id": dispatch_id,
+            "patient_id": patient_id,
+            "ambulance_id": ambulance_id,
+            "hospital_id": hospital_id,
+            "eta_minutes": eta_min,
+            "route": route_data
+        })
+
         result = {"dispatch_id": dispatch_id, "hospital": hospital.to_dict(), "ambulance": ambulance}
         return jsonify(result), 201
+
+
+    @app.post("/dispatch/patient_onboard")
+    def patient_onboard():
+        """Record when patient is onboard the ambulance."""
+        payload = request.get_json(force=True) or {}
+        dispatch_id = payload.get("dispatch_id")
+        patient_id = payload.get("patient_id")
+        ambulance_id = payload.get("ambulance_id")
+        
+        if not dispatch_id or not patient_id or not ambulance_id:
+            return jsonify({"error": "dispatch_id, patient_id, and ambulance_id required"}), 400
+        
+        # Publish patient onboard event
+        publish_event("dispatch.updates.patient_onboard", {
+            "dispatch_id": dispatch_id,
+            "patient_id": patient_id,
+            "ambulance_id": ambulance_id,
+            "status": "onboard",
+            "onboard_time": datetime.utcnow().isoformat()
+        })
+        
+        return jsonify({
+            "message": "Patient onboard event published",
+            "dispatch_id": dispatch_id,
+            "patient_id": patient_id
+        }), 200
+
+
+    @app.post("/dispatch/patient_vitals")
+    def patient_vitals():
+        """Record and publish patient vital signs during transport."""
+        payload = request.get_json(force=True) or {}
+        dispatch_id = payload.get("dispatch_id")
+        patient_id = payload.get("patient_id")
+        vitals = payload.get("vitals")
+        
+        if not dispatch_id or not patient_id or not vitals:
+            return jsonify({"error": "dispatch_id, patient_id, and vitals required"}), 400
+        
+        # Publish patient vitals event
+        publish_event("dispatch.updates.patient_vitals", {
+            "dispatch_id": dispatch_id,
+            "patient_id": patient_id,
+            "vitals": vitals,
+            "recorded_at": datetime.utcnow().isoformat()
+        })
+        
+        return jsonify({
+            "message": "Patient vitals event published",
+            "dispatch_id": dispatch_id,
+            "patient_id": patient_id
+        }), 200
+
+
+    @app.post("/dispatch/reached_hospital")
+    def reached_hospital():
+        """Record when ambulance has reached the hospital."""
+        payload = request.get_json(force=True) or {}
+        dispatch_id = payload.get("dispatch_id")
+        patient_id = payload.get("patient_id")
+        ambulance_id = payload.get("ambulance_id")
+        hospital_id = payload.get("hospital_id")
+        
+        if not dispatch_id or not patient_id or not ambulance_id or not hospital_id:
+            return jsonify({"error": "dispatch_id, patient_id, ambulance_id, and hospital_id required"}), 400
+        
+        # Publish reached hospital event
+        publish_event("dispatch.updates.reached_hospital", {
+            "dispatch_id": dispatch_id,
+            "patient_id": patient_id,
+            "ambulance_id": ambulance_id,
+            "hospital_id": hospital_id,
+            "status": "arrived",
+            "arrival_time": datetime.utcnow().isoformat()
+        })
+        
+        return jsonify({
+            "message": "Reached hospital event published",
+            "dispatch_id": dispatch_id,
+            "hospital_id": hospital_id
+        }), 200
 
 
     return app
