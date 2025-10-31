@@ -1,0 +1,9 @@
+[tool.ruff]
+line-length = 79
+
+[tool.ruff.lint]
+# Keep pycodestyle + pyflakes; E501 (line too long) lives under "E"
+select = ["E", "F"]
+ignore = ["E203", "W503"]  # still Black/Ruff-friendly
+
+[tool.ruff.format]
