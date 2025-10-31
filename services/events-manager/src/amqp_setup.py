@@ -3,6 +3,7 @@ import os
 import sys
 import time
 from typing import Any, Dict
+from json import JSONDecodeError
 
 import pika
 
@@ -150,17 +151,17 @@ class AMQPSetup:
     def _on_triage_status(self, ch, method, properties, body):
         try:
             payload = json.loads(body)
-            # explicit validation + use the fields
             incident_id = payload["incident_id"]
-            status = payload["status"]  # "abnormal" or "emergency"
+            status = payload["status"]
 
             self.publish_alert(incident_id, status, payload)
             self.publish_dispatch_request_if_emergency(incident_id, status, payload)
-
             ch.basic_ack(delivery_tag=method.delivery_tag)
-        except KeyError as e:
-            print(f"Missing field {e}; dropping message.", file=sys.stderr)
+
+        except (KeyError, JSONDecodeError) as e:
+            print(f"Bad message ({e}); dropping.", file=sys.stderr)
             ch.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
+
         except Exception as e:
             print(f"Handler error: {e}", file=sys.stderr)
             ch.basic_nack(delivery_tag=method.delivery_tag, requeue=True)
