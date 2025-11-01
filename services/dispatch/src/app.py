@@ -3,9 +3,17 @@ from __future__ import annotations
 import math
 import os
 import uuid
+import json
+import signal
+import sys
+import threading
 from typing import Dict, List, Tuple, Optional
+from datetime import datetime
+from urllib.parse import urlparse
+from os import environ
 
 import requests
+import pika
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
@@ -13,48 +21,38 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy import String, Float, Integer
 
 import amqp_setup
-import pika
-import json
-from datetime import datetime
 
-# Initialize RabbitMQ connection for publishing events
-def get_amqp_channel():
-    """Get a new AMQP channel for publishing events."""
-    try:
-        hostname = os.environ.get('RABBITMQ_HOST', 'localhost')
-        port = int(os.environ.get('RABBITMQ_PORT', 5672))
-        parameters = pika.ConnectionParameters(host=hostname, port=port)
-        connection = pika.BlockingConnection(parameters)
-        channel = connection.channel()
-        return connection, channel
-    except Exception as e:
-        print(f"Failed to connect to RabbitMQ: {e}")
-        return None, None
+# Get database connection from environment
+db_url = urlparse(environ.get("db_conn"))
+
+# Create a singleton instance
+amqp = amqp_setup.AMQPSetup()
+
+# Flag to control the consumer loop
+should_stop = False
+
+
+def signal_handler(sig, frame):
+    global should_stop
+    print("Stopping consumer...")
+    should_stop = True
+
+
+# Register signal handlers
+signal.signal(signal.SIGINT, signal_handler)
+signal.signal(signal.SIGTERM, signal_handler)
 
 
 def publish_event(routing_key: str, message: dict):
     """Publish an event to the AMQP exchange."""
     try:
-        connection, channel = get_amqp_channel()
-        if not channel:
-            print(f"Cannot publish event {routing_key}: no channel available")
-            return False
-        
-        exchange_name = "amqp.topic"
         message['timestamp'] = datetime.utcnow().isoformat()
+        message_body = json.dumps(message)
         
-        channel.basic_publish(
-            exchange=exchange_name,
-            routing_key=routing_key,
-            body=json.dumps(message),
-            properties=pika.BasicProperties(
-                delivery_mode=2,  # make message persistent
-                content_type='application/json'
-            )
-        )
-        print(f"Published event to {routing_key}: {message}")
-        connection.close()
-        return True
+        success = amqp.publish_event(message_body, routing_key)
+        if success:
+            print(f"Published event to {routing_key}: {message}")
+        return success
     except Exception as e:
         print(f"Failed to publish event to {routing_key}: {e}")
         return False
@@ -184,8 +182,17 @@ def get_google_directions(origin: Tuple[float, float], destination: Tuple[float,
         return None
 
 
-def create_app(db_uri: str = "sqlite:///hospitals.db") -> Flask:
+def create_app(db_uri: Optional[str] = None) -> Flask:
     app = Flask(__name__)
+    
+    # Use MySQL connection from environment or fallback to SQLite for local testing
+    if db_uri is None:
+        if db_url:
+            # Build MySQL connection string
+            db_uri = f"mysql+mysqlconnector://{db_url.username}:{db_url.password}@{db_url.hostname}:{db_url.port or 3306}/dispatch"
+        else:
+            db_uri = "sqlite:///hospitals.db"
+    
     app.config["SQLALCHEMY_DATABASE_URI"] = db_uri
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
     
@@ -454,6 +461,106 @@ def create_app(db_uri: str = "sqlite:///hospitals.db") -> Flask:
     return app
 
 
+def callback(ch, method, properties, body):
+    """Process incoming dispatch command messages."""
+    try:
+        message_body = json.loads(body)
+        print(f"[RECEIVED] Message from {method.routing_key}: {message_body}")
+        
+        # Handle different types of dispatch commands
+        command = message_body.get("command")
+        
+        if command == "dispatch_ambulance":
+            # Process ambulance dispatch request
+            patient_loc = message_body.get("patient_location")
+            patient_id = message_body.get("patient_id", f"patient-{uuid.uuid4().hex[:8]}")
+            hospital_id = message_body.get("hospital_id")
+            
+            if patient_loc and "lat" in patient_loc and "lng" in patient_loc:
+                # Get app context
+                app = create_app()
+                with app.app_context():
+                    if not hospital_id:
+                        # Pick best hospital if none provided
+                        best = pick_best_hospital((float(patient_loc["lat"]), float(patient_loc["lng"])))
+                        hospital_id = best["id"]
+                    
+                    hospital = db.session.get(Hospital, hospital_id)
+                    if hospital:
+                        patient_point = (float(patient_loc["lat"]), float(patient_loc["lng"]))
+                        hospital_point = (hospital.lat, hospital.lng)
+                        
+                        dist = haversine_distance(patient_point, hospital_point)
+                        eta_min = estimate_eta_minutes(dist)
+                        
+                        dispatch_id = str(uuid.uuid4())
+                        ambulance_id = f"amb-{dispatch_id[:8]}"
+                        
+                        # Publish hospital found event
+                        publish_event("dispatch.updates.hospital_found", {
+                            "dispatch_id": dispatch_id,
+                            "patient_id": patient_id,
+                            "hospital_id": hospital_id,
+                            "hospital_name": hospital.name,
+                            "hospital_location": {"lat": hospital.lat, "lng": hospital.lng},
+                            "distance_km": round(dist, 3)
+                        })
+                        
+                        # Publish ambulance sent event
+                        publish_event("dispatch.updates.ambulance_sent", {
+                            "dispatch_id": dispatch_id,
+                            "patient_id": patient_id,
+                            "ambulance_id": ambulance_id,
+                            "hospital_id": hospital_id,
+                            "eta_minutes": eta_min,
+                            "route": {"from": patient_loc, "to": {"lat": hospital.lat, "lng": hospital.lng}}
+                        })
+                        
+                        print(f"SUCCESS: Dispatched ambulance {ambulance_id} to {hospital.name}")
+        
+        else:
+            print(f"Unknown command: {command}")
+            
+    except Exception as e:
+        print(f"FAIL: Error processing message: {str(e)}")
+
+
+def consume():
+    """Start the RabbitMQ consumer."""
+    try:
+        # Ensure connection is established
+        amqp.connect()
+
+        # Set up consumer
+        amqp.channel.basic_consume(
+            queue=amqp.queue_name, on_message_callback=callback, auto_ack=True
+        )
+
+        print(" [*] Waiting for dispatch messages. To exit press CTRL+C")
+
+        # Start consuming
+        while not should_stop:
+            try:
+                amqp.connection.process_data_events(time_limit=1)
+            except pika.exceptions.AMQPConnectionError:
+                print("Connection lost, attempting to reconnect...")
+                amqp.connect()
+
+    except KeyboardInterrupt:
+        print("Interrupted")
+    except Exception as e:
+        print(f"Error in consumer: {e}")
+    finally:
+        if hasattr(amqp, "connection") and amqp.connection and amqp.connection.is_open:
+            amqp.close()
+        sys.exit(0)
+
+
 if __name__ == "__main__":
+    # Start consumer in a separate thread
+    consumer_thread = threading.Thread(target=consume, daemon=True)
+    consumer_thread.start()
+    
+    # Start Flask app
     app = create_app()
-    app.run("0.0.0.0", port=8080, debug=True)
+    app.run("0.0.0.0", port=8080, debug=False, use_reloader=False)
