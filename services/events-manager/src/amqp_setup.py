@@ -17,13 +17,42 @@ def _req(name: str) -> str:
 
 
 class AMQPSetup:
+    # scenario 1: triage-related
     RK_TRIAGE_ABNORMAL = "triage.status.abnormal"
     RK_TRIAGE_EMERGENCY = "triage.status.emergency"
     RK_SEND_ALERT = "cmd.notification.send_alert"
     RK_DISPATCH_REQUEST = "cmd.dispatch.request_ambulance"
 
-    # queue owned by Events Manager for triage actionable
-    Q_TRIAGE_ACTIONABLE = "events-manager.q.triage-actionable"
+    Q_TRIAGE_ACTIONABLE = " "
+
+    # scenario 2: dispatch-related
+    RK_DISPATCH_UNIT_ASSIGNED = "event.dispatch.unit_assigned"
+    RK_DISPATCH_ENROUTE = "event.dispatch.enroute"  # optional but useful
+    RK_DISPATCH_PATIENT_ONBOARD = "event.dispatch.patient_onboard"
+    RK_DISPATCH_ARRIVED = "event.dispatch.arrived_at_hospital"
+
+    Q_DISPATCH_STATUS = "events-manager.q.dispatch-status"
+
+    _TEMPLATE_BY_RK = {
+        RK_DISPATCH_UNIT_ASSIGNED: "DISPATCH_UNIT_ASSIGNED",
+        RK_DISPATCH_ENROUTE: "DISPATCH_ENROUTE",
+        RK_DISPATCH_PATIENT_ONBOARD: "DISPATCH_PATIENT_ONBOARD",
+        RK_DISPATCH_ARRIVED: "DISPATCH_ARRIVED_AT_HOSPITAL",
+    }
+
+    # scenario 3: billing-related
+    RK_BILLING_INITIATE = "cmd.billing.initiate"
+    RK_BILLING_COMPLETED = "event.billing.completed"
+    RK_BILLING_FAILED = "event.billing.failed"
+
+    Q_BILLING_STATUS = "events-manager.q.billing-status"
+
+    _TEMPLATE_BILLING_BY_RK = {
+        RK_BILLING_COMPLETED: "BILLING_COMPLETED",
+        RK_BILLING_FAILED: "BILLING_FAILED",
+    }
+
+    _billing_initiated_incidents: set[str] = set()
 
     def __init__(self):
         self.hostname = _req("RABBITMQ_HOST")
@@ -66,6 +95,7 @@ class AMQPSetup:
         ch.exchange_declare(
             exchange=self.exchange_name, exchange_type=self.exchange_type, durable=True
         )
+        # Scenario 1: queue/bindings
         ch.queue_declare(queue=self.Q_TRIAGE_ACTIONABLE, durable=True)
         ch.queue_bind(
             queue=self.Q_TRIAGE_ACTIONABLE,
@@ -77,6 +107,43 @@ class AMQPSetup:
             exchange=self.exchange_name,
             routing_key=self.RK_TRIAGE_EMERGENCY,
         )
+
+        # Scenario 2 queue/bindings
+        ch.queue_declare(queue=self.Q_DISPATCH_STATUS, durable=True)
+        ch.queue_bind(
+            queue=self.Q_DISPATCH_STATUS,
+            exchange=self.exchange_name,
+            routing_key=self.RK_DISPATCH_UNIT_ASSIGNED,
+        )
+        ch.queue_bind(
+            queue=self.Q_DISPATCH_STATUS,
+            exchange=self.exchange_name,
+            routing_key=self.RK_DISPATCH_ENROUTE,
+        )
+        ch.queue_bind(
+            queue=self.Q_DISPATCH_STATUS,
+            exchange=self.exchange_name,
+            routing_key=self.RK_DISPATCH_PATIENT_ONBOARD,
+        )
+        ch.queue_bind(
+            queue=self.Q_DISPATCH_STATUS,
+            exchange=self.exchange_name,
+            routing_key=self.RK_DISPATCH_ARRIVED,
+        )
+
+        # Scenario 3 queue/bindings
+        ch.queue_declare(queue=self.Q_BILLING_STATUS, durable=True)
+        ch.queue_bind(
+            queue=self.Q_BILLING_STATUS,
+            exchange=self.exchange_name,
+            routing_key=self.RK_BILLING_COMPLETED,
+        )
+        ch.queue_bind(
+            queue=self.Q_BILLING_STATUS,
+            exchange=self.exchange_name,
+            routing_key=self.RK_BILLING_FAILED,
+        )
+
         ch.basic_qos(prefetch_count=16)
 
     def publish(self, routing_key: str, body: Dict[str, Any], incident_id: str) -> None:
@@ -130,11 +197,64 @@ class AMQPSetup:
             incident_id,
         )
 
-    def start_triage_consumer(self):
+    def publish_initiate_billing(self, dispatch_payload: dict) -> None:
         """
-        Consumes actionable triage statuses and orchestrates:
-        - Always publishes SendAlert
-        - Additionally publishes RequestAmbulance on emergency
+        Publish a single, idempotent billing initiation command.
+        Relies on incident_id uniqueness; Billing should be idempotent on incident_id too.
+        """
+        incident_id = dispatch_payload["incident_id"]
+        if incident_id in self._billing_initiated_incidents:
+            return  # prevent duplicate initiations from repeated dispatch events
+        self._billing_initiated_incidents.add(incident_id)
+
+        self.publish(
+            self.RK_BILLING_INITIATE,
+            {
+                "type": "InitiateBilling",
+                "incident_id": incident_id,
+                "patient_id": dispatch_payload.get("patient_id"),
+                "hospital_id": dispatch_payload.get("dest_hospital_id")
+                or dispatch_payload.get("hospital_id"),
+                "summary": {
+                    "unit_id": dispatch_payload.get("unit_id"),
+                    "arrived_ts": dispatch_payload.get("ts"),
+                },
+            },
+            incident_id,
+        )
+
+    def publish_billing_status_alert(self, routing_key: str, payload: dict) -> None:
+        """
+        Optional: keep NOK informed via Notification; if you prefer Notification
+        to read billing.* directly, you can remove this to avoid duplicates.
+        """
+        incident_id = payload["incident_id"]
+        template = self._TEMPLATE_BILLING_BY_RK.get(routing_key)
+        if not template:
+            return
+        vars_obj = {
+            "billing_id": payload.get("billing_id"),
+            "status": payload.get("status"),
+            "amount": payload.get("amount"),
+            "currency": payload.get("currency"),
+            "ts": payload.get("ts"),
+            "reason": payload.get("reason"),
+        }
+        vars_obj = {k: v for k, v in vars_obj.items() if v is not None}
+        self.publish(
+            self.RK_SEND_ALERT,
+            {
+                "type": "SendAlert",
+                "incident_id": incident_id,
+                "template": template,
+                "vars": vars_obj,
+            },
+            incident_id,
+        )
+
+    def start_consumers(self):
+        """
+        Start all EM consumers (Scenario 1 + 2) on a single channel/loop.
         """
         ch = self._ch()
         ch.basic_consume(
@@ -142,7 +262,12 @@ class AMQPSetup:
             on_message_callback=self._on_triage_status,
             auto_ack=False,
         )
-        print("Events Manager (Scenario 1) consuming actionable triage statuses...")
+        ch.basic_consume(
+            queue=self.Q_DISPATCH_STATUS,
+            on_message_callback=self._on_dispatch_update,
+            auto_ack=False,
+        )
+        print("Events Manager consuming: triage actionable + dispatch status...")
         try:
             ch.start_consuming()
         except KeyboardInterrupt:
@@ -164,6 +289,32 @@ class AMQPSetup:
 
         except Exception as e:
             print(f"Handler error: {e}", file=sys.stderr)
+            ch.basic_nack(delivery_tag=method.delivery_tag, requeue=True)
+
+    def _on_dispatch_update(self, ch, method, properties, body):
+        try:
+            payload = json.loads(body)
+            # Route by exact routing key -> template
+            self.publish_dispatch_status_alert(method.routing_key, payload)
+            ch.basic_ack(delivery_tag=method.delivery_tag)
+        except (KeyError, JSONDecodeError) as e:
+            print(f"Bad dispatch message ({e}); dropping.", file=sys.stderr)
+            ch.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
+        except Exception as e:
+            print(f"Dispatch handler error: {e}", file=sys.stderr)
+            ch.basic_nack(delivery_tag=method.delivery_tag, requeue=True)
+
+    def _on_billing_status(self, ch, method, properties, body):
+        try:
+            payload = json.loads(body)
+            # Optionally notify NOK via templates (can be removed if Notification listens directly)
+            self.publish_billing_status_alert(method.routing_key, payload)
+            ch.basic_ack(delivery_tag=method.delivery_tag)
+        except (KeyError, JSONDecodeError) as e:
+            print(f"Bad billing message ({e}); dropping.", file=sys.stderr)
+            ch.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
+        except Exception as e:
+            print(f"Billing handler error: {e}", file=sys.stderr)
             ch.basic_nack(delivery_tag=method.delivery_tag, requeue=True)
 
     # -------- utils --------

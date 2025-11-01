@@ -21,7 +21,7 @@ _tap_conn: Optional[pika.BlockingConnection] = None
 
 def _start_consumer():
     amqp_setup.connect()
-    amqp_setup.start_triage_consumer()
+    amqp_setup.start_consumers()
 
 
 def _publisher_params() -> pika.ConnectionParameters:
@@ -39,7 +39,7 @@ def _publisher_params() -> pika.ConnectionParameters:
 def _publish_once(routing_key: str, body: Dict[str, Any], correlation_id: str):
     """Thread-safe one-shot publish (new connection/channel per call)."""
     ex = os.environ["AMQP_EXCHANGE_NAME"]
-    ex_type = os.environ.get("AMQP_EXCHANGE_TYPE", "topic")
+    ex_type = os.environ.get("AMQP_EXCHANGE_TYPE")
 
     conn = pika.BlockingConnection(_publisher_params())
     try:
@@ -66,7 +66,7 @@ def _start_tap():
     global _tap_conn
     params = _publisher_params()  # same creds/host/vhost
     ex = os.environ["AMQP_EXCHANGE_NAME"]
-    ex_type = os.environ.get("AMQP_EXCHANGE_TYPE", "topic")
+    ex_type = os.environ.get("AMQP_EXCHANGE_TYPE")
 
     _tap_conn = pika.BlockingConnection(params)
     ch = _tap_conn.channel()
