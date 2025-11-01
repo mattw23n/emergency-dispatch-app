@@ -106,6 +106,7 @@ class WearablePublisher:
         return {
             "userId": "1",
             "device": {"id": "wearable-1", "model": "HealthTracker v1"},
+            "location": {"lat": 1.290270, "lng": 103.851959},
             "schemaVersion": "1.0"
         }
 
