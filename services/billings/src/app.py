@@ -91,8 +91,8 @@ def callback(ch, method, properties, body):
                     f"SUCCESS: Payment processed for billing {billing_id}, reference: {payment_reference}"
                 )
 
-                # Publish payment completion notification
-                notification_msg = json.dumps(
+                # Publish payment completion notification and event
+                status_msg = json.dumps(
                     {
                         "billing_id": billing_id,
                         "incident_id": incident_id,
@@ -103,8 +103,9 @@ def callback(ch, method, properties, body):
                         "timestamp": datetime.datetime.utcnow().isoformat(),
                     }
                 )
+                # Publish a single message that both services can consume
                 amqp.publish_notification(
-                    message=notification_msg, routing_key="billing.completed"
+                    message=status_msg, routing_key="billing.status.updated"
                 )
 
             except Exception as e:
@@ -117,7 +118,7 @@ def callback(ch, method, properties, body):
 
                 # Publish payment failure notification
                 try:
-                    notification_msg = json.dumps(
+                    status_msg = json.dumps(
                         {
                             "billing_id": billing_id,
                             "incident_id": incident_id,
@@ -128,8 +129,9 @@ def callback(ch, method, properties, body):
                             "timestamp": datetime.datetime.utcnow().isoformat(),
                         }
                     )
+                    # Publish a single message that both services can consume
                     amqp.publish_notification(
-                        message=notification_msg, routing_key="billing.failed"
+                        message=status_msg, routing_key="billing.status.updated"
                     )
                 except Exception as notify_err:
                     print(f"WARNING: Failed to send failure notification: {notify_err}")
@@ -139,7 +141,7 @@ def callback(ch, method, properties, body):
 
             # Publish insurance verification failure notification
             try:
-                notification_msg = json.dumps(
+                status_msg = json.dumps(
                     {
                         "billing_id": billing_id,
                         "incident_id": incident_id,
@@ -149,8 +151,9 @@ def callback(ch, method, properties, body):
                         "timestamp": datetime.datetime.utcnow().isoformat(),
                     }
                 )
+                # Publish a single message that both services can consume
                 amqp.publish_notification(
-                    message=notification_msg, routing_key="billing.failed"
+                    message=status_msg, routing_key="billing.status.updated"
                 )
             except Exception as notify_err:
                 print(
