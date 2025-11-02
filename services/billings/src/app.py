@@ -3,8 +3,6 @@ import json
 import os
 import signal
 import sys
-from os import environ
-from urllib.parse import urlparse
 
 import mysql.connector
 import pika
@@ -14,7 +12,15 @@ import amqp_setup
 # Create a singleton instance
 amqp = amqp_setup.AMQPSetup()
 
-db_url = urlparse(environ.get("db_conn"))
+# Database configuration
+DB_CONFIG = {
+    'host': os.environ.get('DB_HOST', 'localhost'),
+    'port': int(os.environ.get('DB_PORT', 3306)),
+    'user': os.environ.get('DB_USER', 'cs302'),
+    'password': os.environ.get('DB_PASSWORD', ''),
+    'database': os.environ.get('DB_NAME','cs302DB')
+}
+
 
 # Flag to control the consumer loop
 should_stop = False
@@ -45,31 +51,25 @@ def callback(ch, method, properties, body):
         amount = message_body["amount"]
 
         # Connect to DB and create billing record
-        cnx = mysql.connector.connect(
-            user=db_url.username,
-            password=db_url.password,
-            host=db_url.hostname,
-            port=db_url.port,
-            database="billing",
-        )
+        cnx = mysql.connector.connect(**DB_CONFIG)
         cursor = cnx.cursor()
 
         # Insert new billing
         cursor.execute(
             """
-            INSERT INTO billing (incident_id, patient_id, amount)
+            INSERT INTO billings (incident_id, patient_id, amount)
             VALUES (%s, %s, %s)
         """,
             (incident_id, patient_id, amount),
         )
         cnx.commit()
 
-        # Get the inserted billing_id
-        billing_id = cursor.lastrowid
+        # Get the inserted id
+        id = cursor.lastrowid
         cnx.close()
 
         print(
-            f"SUCCESS: Created billing {billing_id} for patient {patient_id}, amount {amount}"
+            f"SUCCESS: Created billings {id} for patient {patient_id}, amount {amount}"
         )
 
         # 1. Call insurance verification
@@ -88,13 +88,13 @@ def callback(ch, method, properties, body):
                 )
                 status = "PAID"
                 print(
-                    f"SUCCESS: Payment processed for billing {billing_id}, reference: {payment_reference}"
+                    f"SUCCESS: Payment processed for billings {id}, reference: {payment_reference}"
                 )
 
                 # Publish payment completion notification and event
                 status_msg = json.dumps(
                     {
-                        "billing_id": billing_id,
+                        "id": id,
                         "incident_id": incident_id,
                         "patient_id": patient_id,
                         "amount": amount,
@@ -120,7 +120,7 @@ def callback(ch, method, properties, body):
                 try:
                     status_msg = json.dumps(
                         {
-                            "billing_id": billing_id,
+                            "id": id,
                             "incident_id": incident_id,
                             "patient_id": patient_id,
                             "amount": amount,
@@ -137,13 +137,13 @@ def callback(ch, method, properties, body):
                     print(f"WARNING: Failed to send failure notification: {notify_err}")
         else:
             status = "INSURANCE_VERIFICATION_FAILED"
-            print(f"INFO: Insurance verification failed for billing {billing_id}")
+            print(f"INFO: Insurance verification failed for billings {id}")
 
             # Publish insurance verification failure notification
             try:
                 status_msg = json.dumps(
                     {
-                        "billing_id": billing_id,
+                        "id": id,
                         "incident_id": incident_id,
                         "patient_id": patient_id,
                         "amount": amount,
@@ -161,43 +161,35 @@ def callback(ch, method, properties, body):
                 )
 
         # 3. Update billing record with verification and payment status
-        update_billing_status(billing_id, insurance_verified, payment_reference, status)
+        update_billing_status(id, insurance_verified, payment_reference, status)
 
-    except mysql.connector.Error as err:
-        print(f"FAIL: Could not process billing: {err}")
     except Exception as e:
         print(f"FAIL: Unexpected error: {str(e)}")
 
 
-def update_billing_status(billing_id, insurance_verified, payment_reference, status):
+def update_billing_status(id, insurance_verified, payment_reference, status):
     """Update billing record with verification and payment status."""
     try:
-        cnx = mysql.connector.connect(
-            user=db_url.username,
-            password=db_url.password,
-            host=db_url.hostname,
-            port=db_url.port,
-            database="billing",
-        )
+        cnx = mysql.connector.connect(**DB_CONFIG)
         cursor = cnx.cursor()
 
         cursor.execute(
             """
-            UPDATE billing
+            UPDATE billings
             SET status = %s,
                 insurance_verified = %s,
                 payment_reference = %s,
                 updated_at = NOW()
-            WHERE billing_id = %s
+            WHERE id = %s
         """,
-            (status, insurance_verified, payment_reference, billing_id),
+            (status, insurance_verified, payment_reference, id),
         )
 
         cnx.commit()
-        print(f"Updated billing {billing_id} with status: {status}")
+        print(f"Updated billings {id} with status: {status}")
 
     except mysql.connector.Error as err:
-        print(f"Error updating billing status: {err}")
+        print(f"Error updating billings status: {err}")
         raise
     finally:
         if "cnx" in locals() and cnx.is_connected():
@@ -253,22 +245,14 @@ def verify_insurance(incident_id, patient_id, amount=None):
     import requests
 
     try:
-        print(f"Verifying insurance for incident {incident_id}, patient {patient_id}")
-
-        # If amount is not provided, fetch it from the billing record
+        # If amount is not provided, get it from the billing record
         if amount is None:
-            cnx = mysql.connector.connect(
-                user=db_url.username,
-                password=db_url.password,
-                host=db_url.hostname,
-                port=db_url.port,
-                database="billing",
-            )
+            cnx = mysql.connector.connect(**DB_CONFIG)
             cursor = cnx.cursor(dictionary=True)
 
             cursor.execute(
                 """
-                SELECT amount FROM billing
+                SELECT amount FROM billings
                 WHERE incident_id = %s AND patient_id = %s
                 ORDER BY created_at DESC LIMIT 1
                 """,
@@ -280,12 +264,14 @@ def verify_insurance(incident_id, patient_id, amount=None):
             cnx.close()
 
             if not result:
-                print(
-                    f"No billing record found for incident {incident_id} and patient {patient_id}"
-                )
+                print(f"No billing record found for incident {incident_id} and patient {patient_id}")
                 return False
 
-            amount = float(result["amount"])
+            try:
+                amount = float(result['amount'])
+            except (ValueError, KeyError) as e:
+                print(f"Invalid amount in database: {str(e)}")
+                return False
 
         # Prepare the request to insurance service
         headers = {"Content-Type": "application/json"}
@@ -294,15 +280,14 @@ def verify_insurance(incident_id, patient_id, amount=None):
             "incident_id": incident_id,
             "amount": amount,
         }
-
-        print(f"Sending verification request to {INSURANCE_API_URL}")
+        
         response = requests.post(
             INSURANCE_API_URL,
             json=payload,
             headers=headers,
             timeout=10,  # 10 seconds timeout
         )
-
+        
         # Check if the request was successful
         response.raise_for_status()
 
