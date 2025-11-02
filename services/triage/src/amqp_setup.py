@@ -27,13 +27,13 @@ class AMQPSetup:
     Q_WEARABLE_DATA = "triage.q.wearable-data"
 
     def __init__(self):
-        self.hostname = os.environ.get("RABBITMQ_HOST", "localhost")
-        self.port = int(os.environ.get("RABBITMQ_PORT", "5672"))
-        self.username = os.environ.get("RABBITMQ_USER", "guest")
-        self.password = os.environ.get("RABBITMQ_PASSWORD", "guest")
-        self.vhost = os.environ.get("RABBITMQ_VHOST", "/")
-        self.exchange_name = os.environ.get("AMQP_EXCHANGE_NAME", "amqp.topic")
-        self.exchange_type = os.environ.get("AMQP_EXCHANGE_TYPE", "topic")
+        self.hostname = _req("RABBITMQ_HOST")
+        self.port = int(_req("RABBITMQ_PORT"))
+        self.username = _req("RABBITMQ_USER")
+        self.password = _req("RABBITMQ_PASSWORD")
+        self.vhost = _req("RABBITMQ_VHOST")
+        self.exchange_name = _req("AMQP_EXCHANGE_NAME")  # e.g. amqp.topic
+        self.exchange_type = _req("AMQP_EXCHANGE_TYPE")  # e.g. topic
 
         self.connection: pika.BlockingConnection | None = None
         self.channel: pika.adapters.blocking_connection.BlockingChannel | None = None
