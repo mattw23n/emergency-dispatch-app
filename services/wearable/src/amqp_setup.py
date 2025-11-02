@@ -2,9 +2,11 @@ import json
 import os
 import sys
 import time
-from typing import Any, Dict
-
 import pika
+from typing import Any, Dict
+from dotenv import load_dotenv
+
+load_dotenv()
 
 
 def _req(name: str) -> str:

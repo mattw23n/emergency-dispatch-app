@@ -235,7 +235,7 @@ class TestAMQPSetup:
         """Test AMQP setup initialization."""
         amqp = amqp_setup
         assert amqp.RK_WEARABLE_DATA == "wearable.data"
-        assert amqp.hostname == "localhost"  # default value
+        assert amqp.hostname == "rabbitmq"  # default value
         assert amqp.port == 5672  # default value
 
     @patch("pika.BlockingConnection")
