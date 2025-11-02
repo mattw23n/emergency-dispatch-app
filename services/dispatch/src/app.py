@@ -588,7 +588,7 @@ if __name__ == "__main__":
     start_flask = str(os.environ.get("START_FLASK", "true")).lower()
     if start_flask in ("1", "true", "yes", "on"):
         app = create_app()
-        app.run("0.0.0.0", port=8080, debug=False, use_reloader=False)
+        app.run("0.0.0.0", port=8081, debug=False, use_reloader=False)
     else:
         print("START_FLASK is falsey; skipping Flask startup and running only AMQP consumer.")
         try:
