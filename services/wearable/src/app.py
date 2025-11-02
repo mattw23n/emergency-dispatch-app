@@ -56,7 +56,7 @@ class WearablePublisher:
 
             try:
                 payload = self._generate_base_payload()
-                payload["timestampMs"] = int(time.time() * 1000)
+                payload["timestamp"] = int(time.time() * 1000)
                 payload["metrics"] = self.metric_generator()
 
                 amqp_setup.publish_wearable_data(payload)
