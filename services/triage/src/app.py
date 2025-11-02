@@ -6,6 +6,7 @@ import threading
 import signal
 from flask import Flask, jsonify
 
+
 from amqp_setup import amqp_setup
 
 # --- Flask App for Health Check ---
