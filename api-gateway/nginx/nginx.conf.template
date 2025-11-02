@@ -22,9 +22,9 @@ server {
 #   proxy_pass ${notification_service_url_internal}/;
 # }
  
-# location /api/v1/dispatch {
-#   proxy_pass ${dispatch_service_url_internal}/;
-# }
+ location /api/v1/dispatch {
+   proxy_pass ${dispatch_service_url_internal}/;
+ }
 
   location /api/v1/triage {
     proxy_pass ${triage_service_url_internal}/;
