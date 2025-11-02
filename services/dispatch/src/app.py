@@ -394,7 +394,7 @@ def create_app(db_uri: Optional[str] = None) -> Flask:
             db.session.commit()
 
 
-    @app.get("/")
+    @app.get("/health")
     def health():
         """Health check endpoint for Docker healthcheck."""
         return jsonify({"status": "ok", "service": "dispatch-amqp"})
