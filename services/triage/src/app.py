@@ -1,34 +1,24 @@
-import pika
 import json
 import os
 import uuid
 import time
 import threading
+import signal
 from flask import Flask, jsonify
 
-# --- RabbitMQ Configuration ---
-RABBITMQ_HOST = os.getenv('RABBITMQ_HOST', 'localhost')
-RABBITMQ_PORT = int(os.getenv('RABBITMQ_PORT', 5672))
-
-EXCHANGE_NAME = "amqp.topic"
-EXCHANGE_TYPE = "topic"
-
-CONSUME_QUEUE = "amqp.topic"
-PRODUCE_QUEUE = "triage.status"
-
-CONSUME_ROUTING_KEY = "wearable.data"
-PRODUCE_ROUTING_KEY = "triage.status."
-
+from amqp_setup import amqp_setup
 
 # --- Flask App for Health Check ---
 app = Flask(__name__)
+
 # Global state for health check
 service_state = {
     "is_connected": False,
     "messages_processed": 0,
     "emergencies_detected": 0,
-    "abnormalities_detected": 0
+    "abnormalities_detected": 0,
 }
+
 
 def determine_triage_status(metrics):
     """
@@ -37,26 +27,35 @@ def determine_triage_status(metrics):
     """
     hr = metrics.get("heartRateBpm", 0)
     spo2 = metrics.get("spO2Percentage", 100)
-    
+    temp = metrics.get("bodyTemperatureCelsius", 37.0)
+    resp_rate = metrics.get("respirationRateBpm", 16)
+
     # --- Emergency Conditions (Highest Priority) ---
-    # These conditions are immediately life-threatening.
     if spo2 < 91:
-        return "Emergency", "Critically low blood oxygen (Hypoxia)."
+        return "Emergency", "Critically low blood oxygen (Severe Hypoxia)."
     if hr > 150 or hr < 40:
         return "Emergency", "Critically abnormal heart rate."
+    if temp > 39.0 or temp < 35.0:
+        return "Emergency", "Critically abnormal body temperature."
+    if resp_rate > 30 or resp_rate < 8:
+        return "Emergency", "Critically abnormal respiration rate."
 
     # --- Abnormal Conditions (Medium Priority) ---
-    # These are concerning but may not be immediately critical.
     if spo2 < 95:
-        return "Abnormal", "Low blood oxygen."
-    if hr > 120 or hr < 50:
+        return "Abnormal", "Low blood oxygen (Mild Hypoxia)."
+    if hr > 100 or hr < 50:
         return "Abnormal", "Abnormal heart rate."
-        
+    if temp > 37.5 or temp < 36.0:
+        return "Abnormal", "Abnormal body temperature."
+    if resp_rate > 24 or resp_rate < 10:
+        return "Abnormal", "Abnormal respiration rate."
+
     # --- Normal Condition ---
-    return "Normal", "Vitals are within the normal range."
+    return "Normal", "All vitals are within the normal range."
+
 
 def process_message(channel, method, properties, body):
-    """Callback function to handle incoming messages."""
+    """Callback function to handle incoming wearable data messages."""
     try:
         data = json.loads(body)
         print(f"[+] Received user data for ID: {data.get('userId')}")
@@ -64,87 +63,87 @@ def process_message(channel, method, properties, body):
 
         metrics = data.get("metrics", {})
         status, reason = determine_triage_status(metrics)
-        
+
         print(f"    -> Triage Status: {status} ({reason})")
 
-        # Only publish a new message if the status is an Emergency
-        if status == "Emergency" or status == "Abnormal":
+        # Only publish if status is Emergency or Abnormal
+        if status in ["Emergency", "Abnormal"]:
             if status == "Emergency":
                 service_state["emergencies_detected"] += 1
             else:
                 service_state["abnormalities_detected"] += 1
-            
-            # Create the new event payload
+
+            # Create the triage event payload
+            incident_id = str(uuid.uuid4())
             triage_event = {
                 "type": "TriageStatus",
-                "incident_id": str(uuid.uuid4()),
+                "incident_id": incident_id,
                 "user_id": data.get("userId"),
-                "status": status,
+                "patient_id": data.get("userId"),  # Map userId to patient_id
+                "status": status.lower(),
                 "metrics": metrics,
                 "location": data.get("location"),
-                "timestampMs": int(time.time() * 1000)
+                "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                "timestampMs": int(time.time() * 1000),
             }
-            
-            message_body = json.dumps(triage_event, indent=4)
 
-            # Publish the event
-            channel.basic_publish(
-                exchange=EXCHANGE_NAME,
-                routing_key=PRODUCE_ROUTING_KEY + status.lower(),
-                body=message_body,
-                properties=pika.BasicProperties(
-                    content_type='application/json', delivery_mode=2
-                ),
+            # Publish via amqp_setup
+            amqp_setup.publish_triage_status(incident_id, status, triage_event)
+            print(
+                f"    [!] {status.upper()} DETECTED! Published event with Incident ID: {incident_id}"
             )
-            print(f"    [!] EMERGENCY DETECTED! Published event with Incident ID: {triage_event['incident_id']}")
+
+        # Acknowledge the message
+        channel.basic_ack(delivery_tag=method.delivery_tag)
 
     except json.JSONDecodeError:
         print("[!] Error: Could not decode JSON message.")
+        channel.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
     except Exception as e:
         print(f"[!] An unexpected error occurred: {e}")
-    finally:
-        # Acknowledge the message so RabbitMQ removes it from the queue
-        channel.basic_ack(delivery_tag=method.delivery_tag)
+        channel.basic_nack(delivery_tag=method.delivery_tag, requeue=True)
+
 
 def start_consumer():
-    """Starts the RabbitMQ consumer loop."""
-    while True:
-        try:
-            connection = pika.BlockingConnection(
-                pika.ConnectionParameters(host=RABBITMQ_HOST, port=RABBITMQ_PORT)
-            )
-            channel = connection.channel()
-
-            # Declare exchanges and queue for consuming
-            channel.exchange_declare(exchange=EXCHANGE_NAME, exchange_type=EXCHANGE_TYPE)
-            channel.queue_declare(queue=CONSUME_QUEUE, durable=True)
-            channel.queue_bind(queue=CONSUME_QUEUE, exchange=EXCHANGE_NAME, routing_key=CONSUME_ROUTING_KEY)
+    """Starts the RabbitMQ consumer."""
+    try:
+        service_state["is_connected"] = True
+        amqp_setup.connect()
+        amqp_setup.start_consumer(process_message)
+    except Exception as e:
+        print(f"[!] Consumer error: {e}")
+        service_state["is_connected"] = False
 
 
-            service_state["is_connected"] = True
-            print("[*] Triage Service connected to RabbitMQ. Waiting for messages...")
-
-            channel.basic_consume(queue=CONSUME_QUEUE, on_message_callback=process_message)
-            channel.start_consuming()
-
-        except pika.exceptions.AMQPConnectionError as e:
-            print(f"[!] Connection failed: {e}. Retrying in 5 seconds...")
-            service_state["is_connected"] = False
-            time.sleep(5)
-        except KeyboardInterrupt:
-            print("[-] Shutting down consumer.")
-            break
-
-@app.route('/health', methods=['GET'])
+@app.route("/health", methods=["GET"])
 def health_check():
     """Provides the health status of the Triage Service."""
     status_code = 200 if service_state["is_connected"] else 503
     return jsonify(service_state), status_code
 
-if __name__ == '__main__':
-    # Run the RabbitMQ consumer in a background thread
+
+@app.route("/status", methods=["GET"])
+def status():
+    """Check AMQP connection status."""
+    ready = bool(amqp_setup.connection and amqp_setup.connection.is_open)
+    return jsonify(amqp_connected=ready), (200 if ready else 503)
+
+
+def _graceful_shutdown(*_):
+    try:
+        amqp_setup.close()
+    except Exception:
+        pass
+
+
+if __name__ == "__main__":
+    # Set up graceful shutdown
+    signal.signal(signal.SIGTERM, _graceful_shutdown)
+    signal.signal(signal.SIGINT, _graceful_shutdown)
+
+    # Start the RabbitMQ consumer in a background thread
     consumer_thread = threading.Thread(target=start_consumer, daemon=True)
     consumer_thread.start()
-    
-    # Run the Flask health check server in the main thread
-    app.run(host='0.0.0.0', port=5001)
+
+    # Run the Flask health check server
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", "5001")))
