@@ -109,7 +109,7 @@ def generate_simulated_vitals():
 
 
 def monitor_patient_vitals(dispatch_id: str, patient_id: str):
-    """Continuously monitor and publish patient vitals every 5 seconds.
+    """Continuously monitor and publish patient vitals every 2 seconds.
     Runs in a separate thread until the ambulance reaches the hospital.
     Uses its own RabbitMQ connection to avoid thread-safety issues.
     """
@@ -160,8 +160,8 @@ def monitor_patient_vitals(dispatch_id: str, patient_id: str):
                 # dispatch.updates.patient_vitals routing key.
                 print(f"[VITALS] Published vitals for {dispatch_id}: HR={vitals['heart_rate']}, BP={vitals['blood_pressure']}, SpO2={vitals['spo2']}%, Temp={vitals['temperature']}°C")
                 
-                # Wait 5 seconds before next update
-                time.sleep(5)
+                # Wait 2 seconds before next update
+                time.sleep(2)
                 
             except Exception as e:
                 print(f"[VITALS] Error monitoring vitals for {dispatch_id}: {e}")
@@ -173,6 +173,104 @@ def monitor_patient_vitals(dispatch_id: str, patient_id: str):
             print(f"[VITALS] Closed dedicated connection for {dispatch_id}")
     
     print(f"[VITALS] Stopped vitals monitoring for dispatch {dispatch_id}")
+
+
+def automated_ambulance_workflow(dispatch_id: str, patient_id: str, ambulance_id: str, hospital_id: str):
+    """Automated workflow that simulates the ambulance journey.
+    
+    Timeline:
+    - Wait 5 seconds, then publish patient_onboard
+    - Monitor vitals every 2 seconds for 10 seconds (5 vitals updates)
+    - Publish reached_hospital
+    """
+    print(f"[DEBUG] Starting automated workflow for dispatch {dispatch_id}")
+    
+    # Create dedicated connection for this thread
+    workflow_connection = None
+    try:
+        rabbit_host = environ.get("RABBITMQ_HOST") or "localhost"
+        rabbit_port = int(environ.get("RABBITMQ_PORT") or 5672)
+        
+        workflow_connection = pika.BlockingConnection(
+            pika.ConnectionParameters(host=rabbit_host, port=rabbit_port)
+        )
+        workflow_channel = workflow_connection.channel()
+        workflow_channel.exchange_declare(
+            exchange='amqp.topic',
+            exchange_type='topic',
+            durable=True
+        )
+        print(f"[DEBUG] Created dedicated RabbitMQ connection for {dispatch_id}")
+    except Exception as e:
+        print(f"[DEBUG] Failed to create connection: {e}")
+        return
+    
+    try:
+        # Step 1: Wait 5 seconds, then publish patient_onboard
+        print(f"[DEBUG] Waiting 5 seconds before patient onboard...")
+        time.sleep(5)
+        
+        onboard_event = {
+            "dispatch_id": dispatch_id,
+            "patient_id": patient_id,
+            "ambulance_id": ambulance_id,
+            "status": "onboard",
+            "onboard_time": datetime.utcnow().isoformat(),
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        workflow_channel.basic_publish(
+            exchange='amqp.topic',
+            routing_key='dispatch.updates.patient_onboard',
+            body=json.dumps(onboard_event)
+        )
+        print(f"[EVENT] Published patient_onboard for {dispatch_id}")
+        
+        # Start vitals monitoring in the background
+        active_dispatches[dispatch_id] = {
+            "patient_id": patient_id,
+            "stop_monitoring": False
+        }
+        vitals_thread = threading.Thread(
+            target=monitor_patient_vitals,
+            args=(dispatch_id, patient_id),
+            daemon=True,
+            name=f"vitals-{dispatch_id}"
+        )
+        vitals_thread.start()
+        print(f"[EVENT] Started vitals monitoring for {dispatch_id}")
+        
+        # Step 2: Wait 10 seconds while vitals are being monitored
+        print(f"[EVENT] Waiting 10 seconds while vitals are monitored...")
+        time.sleep(10)
+        
+        # Step 3: Stop vitals monitoring and publish reached_hospital
+        if dispatch_id in active_dispatches:
+            active_dispatches[dispatch_id]["stop_monitoring"] = True
+            print(f"[EVENT] Stopping vitals monitoring for {dispatch_id}")
+        
+        arrived_event = {
+            "dispatch_id": dispatch_id,
+            "patient_id": patient_id,
+            "ambulance_id": ambulance_id,
+            "hospital_id": hospital_id,
+            "status": "arrived",
+            "arrival_time": datetime.utcnow().isoformat(),
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        workflow_channel.basic_publish(
+            exchange='amqp.topic',
+            routing_key='dispatch.updates.reached_hospital',
+            body=json.dumps(arrived_event)
+        )
+        print(f"[EVENT] Published reached_hospital for {dispatch_id}")
+        print(f"[DEBUG] Workflow complete for dispatch {dispatch_id}")
+        
+    except Exception as e:
+        print(f"[DEBUG] Error in workflow for {dispatch_id}: {e}")
+    finally:
+        if workflow_connection and workflow_connection.is_open:
+            workflow_connection.close()
+            print(f"[DEBUG] Closed dedicated connection for {dispatch_id}")
 
 
 class Base(DeclarativeBase):
@@ -404,12 +502,14 @@ def create_app(db_uri: Optional[str] = None) -> Flask:
 
 
 def callback(ch, method, properties, body):
-    """Process incoming dispatch command messages."""
+    """Process incoming dispatch command messages.
+    Only accepts 'request_ambulance' command - all other workflow is automated.
+    """
     try:
         message_body = json.loads(body)
         print(f"[RECEIVED] Message from {method.routing_key}: {message_body}")
         
-        # Handle different types of dispatch commands
+        # Only handle request_ambulance command - everything else is automated
         command = message_body.get("command")
         print(f"[DEBUG] Command type: {command}")
         
@@ -460,86 +560,22 @@ def callback(ch, method, properties, body):
                         })
                         
                         print(f"SUCCESS: Dispatched ambulance {ambulance_id} to {hospital.name}")
-        
-        elif command == "patient_onboard":
-            # Patient has been picked up by ambulance
-            dispatch_id = message_body.get("dispatch_id")
-            patient_id = message_body.get("patient_id")
-            ambulance_id = message_body.get("ambulance_id")
-            
-            publish_event("dispatch.updates.patient_onboard", {
-                "dispatch_id": dispatch_id,
-                "patient_id": patient_id,
-                "ambulance_id": ambulance_id,
-                "status": "onboard",
-                "onboard_time": datetime.utcnow().isoformat()
-            })
-            print(f"Patient {patient_id} is now onboard ambulance {ambulance_id}")
-            
-            # Start continuous vitals monitoring in background thread
-            active_dispatches[dispatch_id] = {
-                "patient_id": patient_id,
-                "stop_monitoring": False
-            }
-            vitals_thread = threading.Thread(
-                target=monitor_patient_vitals,
-                args=(dispatch_id, patient_id),
-                daemon=True,
-                name=f"vitals-{dispatch_id}"
-            )
-            vitals_thread.start()
-            print(f"[VITALS] Started continuous monitoring for {dispatch_id}")
-        
-        elif command == "update_vitals":
-            # OPTIONAL: Manual vitals update (for external sensors or manual override)
-            # NOTE: Automatic vitals are already published every 5 seconds after patient_onboard
-            # This command is useful for:
-            # - Real medical sensor data integration
-            # - Manual updates from paramedics/nurses
-            # - Override simulated vitals with actual readings
-            dispatch_id = message_body.get("dispatch_id")
-            patient_id = message_body.get("patient_id")
-            vitals = message_body.get("vitals", {})
-            
-            publish_event("dispatch.updates.patient_vitals", {
-                "dispatch_id": dispatch_id,
-                "patient_id": patient_id,
-                "vitals": vitals,
-                "recorded_at": datetime.utcnow().isoformat(),
-                "source": "manual"  # Distinguish from automatic vitals
-            })
-            print(f"[MANUAL] Updated vitals for patient {patient_id}: {vitals}")
-        
-        elif command == "reached_hospital":
-            # Ambulance has arrived at hospital
-            dispatch_id = message_body.get("dispatch_id")
-            patient_id = message_body.get("patient_id")
-            ambulance_id = message_body.get("ambulance_id")
-            hospital_id = message_body.get("hospital_id")
-            
-            print(f"[DEBUG] reached_hospital - dispatch_id: {dispatch_id}")
-            print(f"[DEBUG] active_dispatches keys: {list(active_dispatches.keys())}")
-            print(f"[DEBUG] Is dispatch_id in active_dispatches? {dispatch_id in active_dispatches}")
-            
-            # Stop vitals monitoring for this dispatch
-            if dispatch_id in active_dispatches:
-                active_dispatches[dispatch_id]["stop_monitoring"] = True
-                print(f"[VITALS] Stopping monitoring for {dispatch_id}")
+                        
+                        # Start automated workflow in background thread
+                        # This handles: patient_onboard -> vitals monitoring -> reached_hospital
+                        workflow_thread = threading.Thread(
+                            target=automated_ambulance_workflow,
+                            args=(dispatch_id, patient_id, ambulance_id, hospital_id),
+                            daemon=True,
+                            name=f"workflow-{dispatch_id}"
+                        )
+                        workflow_thread.start()
+                        print(f"Started workflow thread for {dispatch_id}")
             else:
-                print(f"[VITALS] WARNING: dispatch_id '{dispatch_id}' not found in active_dispatches!")
-            
-            publish_event("dispatch.updates.reached_hospital", {
-                "dispatch_id": dispatch_id,
-                "patient_id": patient_id,
-                "ambulance_id": ambulance_id,
-                "hospital_id": hospital_id,
-                "status": "arrived",
-                "arrival_time": datetime.utcnow().isoformat()
-            })
-            print(f"Ambulance {ambulance_id} reached hospital {hospital_id}")
+                print(f"ERROR: Invalid patient_location in request_ambulance: {patient_loc}")
         
         else:
-            print(f"Unknown command: {command}")
+            print(f"IGNORED: Command '{command}' - only 'request_ambulance' is supported (workflow is automated)")
             
     except Exception as e:
         print(f"FAIL: Error processing message: {str(e)}")
