@@ -515,7 +515,8 @@ def callback(ch, method, properties, body):
         
         if command == "request_ambulance":
             # Process ambulance dispatch request
-            patient_loc = message_body.get("patient_location")
+            # Accept both "location" and "patient_location" for compatibility
+            patient_loc = message_body.get("location")
             patient_id = message_body.get("patient_id", f"patient-{uuid.uuid4().hex[:8]}")
             hospital_id = message_body.get("hospital_id")
             
