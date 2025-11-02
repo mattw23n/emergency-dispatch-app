@@ -18,6 +18,7 @@ service_state = {
     "messages_processed": 0,
     "emergencies_detected": 0,
     "abnormalities_detected": 0,
+    "patient_states": {},
 }
 
 
@@ -59,16 +60,21 @@ def process_message(channel, method, properties, body):
     """Callback function to handle incoming wearable data messages."""
     try:
         data = json.loads(body)
-        print(f"[+] Received user data for ID: {data.get('userId')}")
+        patient_id = data.get("patient_id")
+        print(f"[+] Received user data for ID: {patient_id}")
         service_state["messages_processed"] += 1
 
         metrics = data.get("metrics", {})
         status, reason = determine_triage_status(metrics)
 
-        print(f"    -> Triage Status: {status} ({reason})")
+        # Get previous status for this patient
+        previous_status = service_state["patient_states"].get(patient_id, "Normal")
 
-        # Only publish if status is Emergency or Abnormal
-        if status in ["Emergency", "Abnormal"]:
+        print(f"    -> Triage Status: {status} ({reason})")
+        print(f"    -> Previous Status: {previous_status}")
+
+        # Only publish if status changed AND is Emergency or Abnormal
+        if status != previous_status and status in ["Emergency", "Abnormal"]:
             if status == "Emergency":
                 service_state["emergencies_detected"] += 1
             else:
@@ -79,9 +85,9 @@ def process_message(channel, method, properties, body):
             triage_event = {
                 "type": "TriageStatus",
                 "incident_id": incident_id,
-                "user_id": data.get("userId"),
-                "patient_id": data.get("userId"),  # Map userId to patient_id
+                "patient_id": patient_id,
                 "status": status.lower(),
+                "previous_status": previous_status.lower(),
                 "metrics": metrics,
                 "location": data.get("location"),
                 "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
@@ -91,8 +97,16 @@ def process_message(channel, method, properties, body):
             # Publish via amqp_setup
             amqp_setup.publish_triage_status(incident_id, status, triage_event)
             print(
-                f"    [!] {status.upper()} DETECTED! Published event with Incident ID: {incident_id}"
+                f"    [!] STATUS CHANGE! {previous_status} → {status} - Published event with Incident ID: {incident_id}"
             )
+
+        elif status in ["Emergency", "Abnormal"]:
+            print(f"    [-] Status unchanged ({status}) - No alert sent")
+        else:
+            print("    [✓] Normal vitals - No alert needed")
+
+        # Update patient status
+        service_state["patient_states"][patient_id] = status
 
         # Acknowledge the message
         channel.basic_ack(delivery_tag=method.delivery_tag)
