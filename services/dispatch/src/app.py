@@ -413,7 +413,7 @@ def callback(ch, method, properties, body):
         command = message_body.get("command")
         print(f"[DEBUG] Command type: {command}")
         
-        if command == "dispatch_ambulance":
+        if command == "request_ambulance":
             # Process ambulance dispatch request
             patient_loc = message_body.get("patient_location")
             patient_id = message_body.get("patient_id", f"patient-{uuid.uuid4().hex[:8]}")
