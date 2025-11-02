@@ -151,7 +151,6 @@ def get_scenario():
 @app.route("/scenario", methods=["PUT"])
 def change_scenario():
     """Change the current scenario."""
-    global publisher_instance
     if not publisher_instance:
         return jsonify({"error": "Publisher not initialized"}), 500
 
@@ -185,7 +184,6 @@ def change_scenario():
 
 
 def _graceful_shutdown(*_):
-    global publisher_instance
     if publisher_instance:
         publisher_instance.stop()
 
