@@ -1,0 +1,10 @@
+
+services:
+  ##################################
+  # Pytest on Triage Service
+  ##################################
+
+  triage-pytest:
+    build:
+      context: ../
+      dockerfile: ci/Dockerfile.test

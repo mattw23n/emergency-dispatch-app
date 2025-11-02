@@ -90,8 +90,7 @@ def process_message(channel, method, properties, body):
                 "previous_status": previous_status.lower(),
                 "metrics": metrics,
                 "location": data.get("location"),
-                "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-                "timestampMs": int(time.time() * 1000),
+                "timestamp": int(time.time() * 1000),
             }
 
             # Publish via amqp_setup

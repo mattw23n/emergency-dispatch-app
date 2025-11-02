@@ -1,0 +1,78 @@
+stages:
+  - Static Analysis
+  - Test
+  - Release
+  # - Staging
+  # - Deploy
+
+
+flake8:
+  stage: Static Analysis
+  image: python:3.13-slim
+  before_script:
+    - python -V
+    - python -m pip install flake8
+  script:
+    # - python -V
+    - flake8 src | tee flake8_report.txt
+  artifacts:
+    when: on_failure
+    paths:
+      - flake8_report.txt
+
+pylint:
+  stage: Static Analysis
+  image: python:3.13-slim
+  before_script:
+    - python -V
+    - python -m pip install -r requirements.txt
+    - python -m pip install pylint
+  script:
+    - pylint --fail-under=7 src | tee pylint_report.txt
+  artifacts:
+    when: always
+    paths:
+      - pylint_report.txt
+
+
+integration-tests:
+  stage: Test
+  image: docker:28.3.2
+  services:
+    - docker:28.3.2-dind
+  before_script:
+    - docker info
+  script:
+    - docker compose -f ci/compose.test.yaml up --exit-code-from triage-pytest
+
+release-image:
+  stage: Release
+  image: docker:28.3.2
+  services:
+    - docker:28.3.2-dind
+  before_script:
+    - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" $CI_REGISTRY
+  script:
+    - docker build --pull -t "$CI_REGISTRY_IMAGE/$CI_COMMIT_BRANCH:$CI_COMMIT_SHA" .
+    - docker push "$CI_REGISTRY_IMAGE/$CI_COMMIT_BRANCH:$CI_COMMIT_SHA"
+
+# deploy-staging:
+#   stage: Staging
+#   image: 'registry.gitlab.com/gitlab-org/cloud-deploy/aws-ecs:latest'
+#   environment:
+#     name: production-ecs
+#   rules:
+#     - if: '$CI_COMMIT_REF_NAME == "main"'
+#   script:
+#     - ecs update-task-definition
+
+# deploy-ecs:
+#   stage: Deploy
+#   image: 'registry.gitlab.com/gitlab-org/cloud-deploy/aws-ecs:latest'
+#   environment:
+#     name: production-ecs
+#   when: manual
+#   rules:
+#     - if: '$CI_COMMIT_REF_NAME == "main"'
+#   script:
+#     - ecs update-task-definition
