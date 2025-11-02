@@ -23,21 +23,38 @@ from sqlalchemy import String, Float, Integer, create_engine, text
 
 import amqp_setup
 
-# Get database connection from environment and parse robustly
+# Get database connection from environment
+# Support both legacy db_conn and individual AWS RDS configuration
 raw_db_conn = environ.get("db_conn")
+db_host = environ.get("DB_HOST")
+db_port = environ.get("DB_PORT", "3306")
+db_user = environ.get("DB_USER")
+db_password = environ.get("DB_PASSWORD")
+db_name = environ.get("DB_NAME")
+
 db_url = None
-if raw_db_conn:
-    # If a full URL is provided use it. If not, assume mysql+mysqlconnector scheme
+
+# Priority 1: Use individual DB_* environment variables (AWS RDS configuration)
+if db_host and db_user and db_password and db_name:
+    # Build connection string from individual components
+    db_connection_string = f"{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
+    db_url = urlparse("mysql+mysqlconnector://" + db_connection_string)
+    print(f"Using AWS RDS: {db_host}:{db_port}/{db_name}")
+
+# Priority 2: Fall back to legacy db_conn if provided
+elif raw_db_conn:
     if "://" in raw_db_conn:
         db_url = urlparse(raw_db_conn)
     else:
-        # prepend scheme so urlparse fills hostname/port properly
         db_url = urlparse("mysql+mysqlconnector://" + raw_db_conn)
+    print(f"Using db_conn: {db_url.hostname}:{db_url.port}")
+
+# Priority 3: Default to SQLite for local development
+else:
+    print("No database configuration found; defaulting to SQLite")
 
 if db_url:
-    print(f"DB connection string parsed: scheme={db_url.scheme}, hostname={db_url.hostname}, port={db_url.port}")
-else:
-    print("No db_conn environment variable found; defaulting to SQLite")
+    print(f"DB connection: scheme={db_url.scheme}, hostname={db_url.hostname}, port={db_url.port}, database={db_url.path.lstrip('/')}")
 
 # Create a singleton instance
 amqp = amqp_setup.AMQPSetup()
@@ -302,8 +319,11 @@ def create_app(db_uri: Optional[str] = None) -> Flask:
     # Use MySQL connection from environment or fallback to SQLite for local testing
     if db_uri is None:
         if db_url:
-            # Build MySQL connection string
-            db_uri = f"mysql+mysqlconnector://{db_url.username}:{db_url.password}@{db_url.hostname}:{db_url.port or 3306}/dispatch"
+            # Extract database name from path (e.g., /cs302DB or /dispatch)
+            database_name = db_url.path.lstrip('/') if db_url.path else "dispatch"
+            
+            # Build MySQL connection string with the correct database
+            db_uri = f"mysql+mysqlconnector://{db_url.username}:{db_url.password}@{db_url.hostname}:{db_url.port or 3306}/{database_name}"
         else:
             db_uri = "sqlite:///hospitals.db"
     
@@ -321,7 +341,9 @@ def create_app(db_uri: Optional[str] = None) -> Flask:
         
         # If using MySQL, ensure the database exists before trying to create tables
         if db_uri and "mysql" in db_uri.lower():
-            database_name = "dispatch"
+            # Extract database name from URI
+            database_name = db_url.path.lstrip('/') if db_url and db_url.path else db_uri.rsplit('/', 1)[-1]
+            
             # Build connection string without database name to create it
             if db_url:
                 base_uri = f"mysql+mysqlconnector://{db_url.username}:{db_url.password}@{db_url.hostname}:{db_url.port or 3306}"
