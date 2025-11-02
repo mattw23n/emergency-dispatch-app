@@ -3,9 +3,11 @@ import json
 import os
 import signal
 import sys
+from threading import Thread
 
 import mysql.connector
 import pika
+from flask import Flask, jsonify
 
 import amqp_setup
 
@@ -378,5 +380,56 @@ def consume():
         sys.exit(0)
 
 
+# Initialize Flask app
+app = Flask(__name__)
+
+@app.route('/health')
+def health_check():
+    """Health check endpoint to verify service is running."""
+    status = {'status': 'healthy', 'service': 'billings', 'version': '1.0.0'}
+    status_code = 200
+    
+    # Check database connection
+    try:
+        cnx = mysql.connector.connect(**{
+            **DB_CONFIG,
+            'connection_timeout': 5,
+            'buffered': True
+        })
+        cursor = cnx.cursor()
+        cursor.execute("SELECT 1")
+        result = cursor.fetchone()
+        if not result or result[0] != 1:
+            raise Exception("Unexpected database response")
+        status['database'] = 'connected'
+    except Exception as e:
+        status.update({
+            'status': 'unhealthy',
+            'database': 'connection failed',
+            'error': str(e)
+        })
+        status_code = 500
+    finally:
+        if 'cnx' in locals() and cnx.is_connected():
+            cnx.close()
+    
+    status['timestamp'] = datetime.datetime.utcnow().isoformat()
+    return jsonify(status), status_code
+
+def run_flask_app():
+    """Run the Flask app in a separate thread."""
+    port = int(os.environ.get('PORT', '5100'))  # Default to 5100 if not set
+    print(f"Starting Flask server on port {port}")
+    app.run(host='0.0.0.0', port=port, debug=True, use_reloader=False)
+
 if __name__ == "__main__":
+    print("Starting billings service...")
+    print(f"Environment PORT: {os.environ.get('PORT')}")
+    
+    # Start Flask in a separate thread
+    flask_thread = Thread(target=run_flask_app, daemon=True)
+    flask_thread.start()
+    
+    # Start the consumer in the main thread
+    print("Starting RabbitMQ consumer...")
     consume()
