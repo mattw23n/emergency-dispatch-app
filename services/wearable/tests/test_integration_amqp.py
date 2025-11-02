@@ -12,7 +12,7 @@ SIMULATOR_URL = 'http://localhost:5000'
 WEARABLE_DATA_SCHEMA = {
     "type": "object",
     "properties": {
-        "userId": {"type": "string"},
+        "patient_id": {"type": "string"},
         "device": {
             "type": "object",
             "properties": {"id": {"type": "string"}, "model": {"type": "string"}},
@@ -35,7 +35,7 @@ WEARABLE_DATA_SCHEMA = {
             ]
         }
     },
-    "required": ["userId", "device", "schemaVersion", "timestampMs", "metrics"]
+    "required": ["patient_id", "device", "schemaVersion", "timestampMs", "metrics"]
 }
 
 @pytest.fixture(scope="module")
