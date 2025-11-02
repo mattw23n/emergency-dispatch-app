@@ -81,7 +81,7 @@ class WearablePublisher:
     # --- Data Generation Methods ---
     def _generate_base_payload(self):
         return {
-            "userId": "P123",
+            "patient_id": "P123",
             "device": {"id": "wearable-1", "model": "HealthTracker v1"},
             "location": {"lat": 1.290270, "lng": 103.851959},
             "schemaVersion": "1.0",
