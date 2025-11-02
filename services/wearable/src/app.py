@@ -4,7 +4,7 @@ import sys
 import os
 import threading
 import signal
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 
 from amqp_setup import amqp_setup
 
@@ -140,6 +140,50 @@ def status():
     return jsonify(amqp_connected=ready), (200 if ready else 503)
 
 
+@app.route("/scenario", methods=["GET"])
+def get_scenario():
+    """Get current scenario."""
+    if publisher_instance:
+        return jsonify({"scenario": publisher_instance.scenario}), 200
+    return jsonify({"error": "Publisher not initialized"}), 500
+
+
+@app.route("/scenario", methods=["PUT"])
+def change_scenario():
+    """Change the current scenario."""
+    global publisher_instance
+    if not publisher_instance:
+        return jsonify({"error": "Publisher not initialized"}), 500
+
+    data = request.get_json()
+    new_scenario = data.get("scenario", "").lower()
+
+    if new_scenario not in ["normal", "abnormal", "emergency"]:
+        return jsonify(
+            {"error": "Invalid scenario. Must be 'normal', 'abnormal', or 'emergency'"}
+        ), 400
+
+    # Update the scenario and metric generator
+    publisher_instance.scenario = new_scenario
+    if new_scenario == "normal":
+        publisher_instance.metric_generator = (
+            publisher_instance._generate_normal_metrics
+        )
+    elif new_scenario == "abnormal":
+        publisher_instance.metric_generator = (
+            publisher_instance._generate_abnormal_metrics
+        )
+    else:
+        publisher_instance.metric_generator = (
+            publisher_instance._generate_emergency_metrics
+        )
+
+    print(f"[SCENARIO CHANGE] Switched to {new_scenario.upper()} mode")
+    return jsonify(
+        {"message": f"Scenario changed to {new_scenario}", "scenario": new_scenario}
+    ), 200
+
+
 def _graceful_shutdown(*_):
     global publisher_instance
     if publisher_instance:
@@ -148,12 +192,18 @@ def _graceful_shutdown(*_):
 
 def main():
     global publisher_instance
-    if len(sys.argv) < 2:
-        print("Usage: python app.py <scenario>")
-        print("Available scenarios: normal, abnormal, emergency")
+    # Default to normal if no argument provided
+    scenario = "normal"
+    if len(sys.argv) > 1:
+        scenario = sys.argv[1].lower()
+
+    if scenario not in ["normal", "abnormal", "emergency"]:
+        print(
+            f"Error: Invalid scenario '{scenario}'. Must be 'normal', 'abnormal', or 'emergency'"
+        )
         return
 
-    scenario = sys.argv[1].lower()
+    print(f"Starting wearable service with scenario: {scenario}")
 
     try:
         # Set up graceful shutdown
