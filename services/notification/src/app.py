@@ -5,7 +5,8 @@ import time
 from os import environ
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from .send_sns import send_notification
+from send_sns import send_notification
+import uvicorn
 
 # --- FastAPI Setup ---
 app = FastAPI(title="Notification Service")
@@ -17,12 +18,13 @@ class Notification(BaseModel):
 
 
 # --- RabbitMQ Setup ---
-hostname = environ.get('RABBITMQ_HOST') or 'localhost'
-port = int(environ.get('RABBITMQ_PORT') or 5672)
+hostname = environ.get("RABBITMQ_HOST") or "localhost"
+port = int(environ.get("RABBITMQ_PORT") or 5672)
 exchange_name = "amqp.topic"
 exchange_type = "topic"
 queue_name = "Notification"
 binding_key = "*.notify.#"
+
 
 def connect_to_rabbitmq():
     """Retry RabbitMQ connection until successful."""
@@ -30,10 +32,10 @@ def connect_to_rabbitmq():
     while True:
         try:
             connection = pika.BlockingConnection(parameters)
-            print(f"Connected to RabbitMQ at {hostname}:{port}")
+            print(f"✅ Connected to RabbitMQ at {hostname}:{port}")
             return connection
         except pika.exceptions.AMQPConnectionError as e:
-            print(f"RabbitMQ connection failed: {e}. Retrying in 2s...")
+            print(f"⚠️ RabbitMQ connection failed: {e}. Retrying in 2s...")
             time.sleep(2)
 
 
@@ -44,7 +46,7 @@ def setup_rabbitmq():
     channel.exchange_declare(exchange=exchange_name, exchange_type=exchange_type, durable=True)
     channel.queue_declare(queue=queue_name, durable=True)
     channel.queue_bind(exchange=exchange_name, queue=queue_name, routing_key=binding_key)
-    print(f"Exchange '{exchange_name}', queue '{queue_name}', and binding '{binding_key}' are set up.")
+    print(f"Exchange '{exchange_name}', queue '{queue_name}', and binding '{binding_key}' set up.")
     return connection, channel
 
 
@@ -90,14 +92,7 @@ def consume_notifications():
     channel.start_consuming()
 
 
-@app.on_event("startup")
-def startup_event():
-    """Initialize RabbitMQ and start consumer in background."""
-    setup_rabbitmq()
-    threading.Thread(target=consume_notifications, daemon=True).start()
-    print("Background consumer started.")
-
-
+# --- FastAPI Routes ---
 @app.get("/health")
 def health_check():
     return {"status": "ok"}
@@ -105,18 +100,32 @@ def health_check():
 
 @app.post("/notify")
 def notify(req: Notification):
-    """
-    Sends notification through SNS and publishes event to RabbitMQ.
-    """
+    """Sends notification through SNS and publishes event to RabbitMQ."""
     try:
         msg_id = send_notification(req.patient_id, req.subject, req.message)
         publish_billing_complete(req.patient_id, req.subject, req.message)
-
         return {
             "status": "sent",
             "message_id": msg_id,
             "patient_id": req.patient_id
         }
-
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error sending notification: {str(e)}")
+
+
+# --- Entry Point ---
+def main():
+    """Start the FastAPI app and background RabbitMQ consumer."""
+    print("🚀 Starting Notification microservice...")
+    setup_rabbitmq()
+
+    # Start the consumer in a background thread
+    consumer_thread = threading.Thread(target=consume_notifications, daemon=True)
+    consumer_thread.start()
+
+    # Start FastAPI (Uvicorn) server
+    uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=False)
+
+
+if __name__ == "__main__":
+    main()
