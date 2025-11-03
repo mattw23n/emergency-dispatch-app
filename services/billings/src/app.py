@@ -50,7 +50,7 @@ def callback(ch, method, properties, body):
         message_body = json.loads(body)
         incident_id = message_body["incident_id"]
         patient_id = message_body["patient_id"]
-        amount = message_body["amount"]
+        amount = 100
 
         # Connect to DB and create billing record
         cnx = mysql.connector.connect(**DB_CONFIG)
@@ -94,21 +94,17 @@ def callback(ch, method, properties, body):
                 )
 
                 # Publish payment completion notification and event
-                status_msg = json.dumps(
-                    {
-                        "id": id,
-                        "incident_id": incident_id,
-                        "patient_id": patient_id,
-                        "amount": amount,
-                        "status": "COMPLETED",
-                        "payment_reference": payment_reference,
-                        "timestamp": datetime.datetime.utcnow().isoformat(),
-                    }
-                )
-                # Publish a single message that both services can consume
-                amqp.publish_notification(
-                    message=status_msg, routing_key="billing.status.updated"
-                )
+                status_msg = {
+                    "id": id,
+                    "incident_id": incident_id,
+                    "patient_id": patient_id,
+                    "amount": amount,
+                    "status": "COMPLETED",
+                    "payment_reference": payment_reference,
+                    "timestamp": datetime.datetime.utcnow().isoformat()
+                }
+                # Publish status update using the new method
+                amqp.publish_status_update(status_msg, is_success=True)
 
             except Exception as e:
                 error_msg = str(e)
@@ -120,21 +116,17 @@ def callback(ch, method, properties, body):
 
                 # Publish payment failure notification
                 try:
-                    status_msg = json.dumps(
-                        {
-                            "id": id,
-                            "incident_id": incident_id,
-                            "patient_id": patient_id,
-                            "amount": amount,
-                            "status": "FAILED",
-                            "error": error_msg,
-                            "timestamp": datetime.datetime.utcnow().isoformat(),
-                        }
-                    )
-                    # Publish a single message that both services can consume
-                    amqp.publish_notification(
-                        message=status_msg, routing_key="billing.status.updated"
-                    )
+                    status_msg = {
+                        "id": id,
+                        "incident_id": incident_id,
+                        "patient_id": patient_id,
+                        "amount": amount,
+                        "status": status,  # This will be either PAYMENT_DECLINED or PAYMENT_FAILED
+                        "error": error_msg,
+                        "timestamp": datetime.datetime.utcnow().isoformat()
+                    }
+                    # Publish status update using the new method
+                    amqp.publish_status_update(status_msg, is_success=False)
                 except Exception as notify_err:
                     print(f"WARNING: Failed to send failure notification: {notify_err}")
         else:
@@ -143,24 +135,18 @@ def callback(ch, method, properties, body):
 
             # Publish insurance verification failure notification
             try:
-                status_msg = json.dumps(
-                    {
-                        "id": id,
-                        "incident_id": incident_id,
-                        "patient_id": patient_id,
-                        "amount": amount,
-                        "status": "INSURANCE_VERIFICATION_FAILED",
-                        "timestamp": datetime.datetime.utcnow().isoformat(),
-                    }
-                )
-                # Publish a single message that both services can consume
-                amqp.publish_notification(
-                    message=status_msg, routing_key="billing.status.updated"
-                )
+                status_msg = {
+                    "id": id,
+                    "incident_id": incident_id,
+                    "patient_id": patient_id,
+                    "amount": amount,
+                    "status": "INSURANCE_VERIFICATION_FAILED",
+                    "error": "Insurance verification failed",
+                    "timestamp": datetime.datetime.utcnow().isoformat()
+                }
+                amqp.publish_status_update(status_msg, is_success=False)
             except Exception as notify_err:
-                print(
-                    f"WARNING: Failed to send insurance verification failure notification: {notify_err}"
-                )
+                print(f"WARNING: Failed to send insurance failure notification: {notify_err}")
 
         # 3. Update billing record with verification and payment status
         update_billing_status(id, insurance_verified, payment_reference, status)
