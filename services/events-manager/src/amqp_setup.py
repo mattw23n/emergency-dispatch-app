@@ -23,7 +23,7 @@ class AMQPSetup:
     RK_SEND_ALERT = "cmd.notification.send_alert"
     RK_DISPATCH_REQUEST = "cmd.dispatch.request_ambulance"
 
-    Q_TRIAGE_ACTIONABLE = " "
+    Q_TRIAGE_ACTIONABLE = "events-manager.q.triage-actionable"
 
     # scenario 2: dispatch-related
     RK_DISPATCH_UNIT_ASSIGNED = "event.dispatch.unit_assigned"
@@ -191,6 +191,7 @@ class AMQPSetup:
                 "type": "RequestAmbulance",
                 "incident_id": incident_id,
                 "patient_id": payload.get("patient_id"),
+                "command": "request_ambulance",
                 "location": payload.get("location"),
                 "reason": "TRIAGE_EMERGENCY",
             },
