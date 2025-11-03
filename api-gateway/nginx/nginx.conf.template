@@ -6,31 +6,31 @@ server {
    log_not_found off;
   }
 
-  location /api/v1/billings {
+  location /api/v1/billings/ {
     proxy_pass ${billings_service_url_internal}/;
   }
  
-  location /api/v1/insurance {
+  location /api/v1/insurance/ {
     proxy_pass ${insurance_service_url_internal}/;
   }
 
-  location /api/v1/wearable {
+  location /api/v1/wearable/ {
     proxy_pass ${wearable_service_url_internal}/;
   }
 
-#  location /api/v1/notification {
-#    proxy_pass ${notification_service_url_internal}/;
-#  }
+  location /api/v1/notification/ {
+    proxy_pass ${notification_service_url_internal}/;
+  }
  
-  location /api/v1/dispatch {
+  location /api/v1/dispatch/ {
     proxy_pass ${dispatch_service_url_internal}/;
   }
 
-  location /api/v1/triage {
+  location /api/v1/triage/ {
     proxy_pass ${triage_service_url_internal}/;
   }
 
-  location /api/v1/events-manager {
+  location /api/v1/events-manager/ {
     proxy_pass ${events_manager_service_url_internal}/;
   }
 
