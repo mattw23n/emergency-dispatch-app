@@ -198,6 +198,32 @@ class AMQPSetup:
             incident_id,
         )
 
+    def publish_dispatch_status_alert(self, routing_key: str, payload: dict) -> None:
+        incident_id = payload["incident_id"]
+        template = self._TEMPLATE_BY_RK.get(routing_key)
+        if not template:
+            return
+        vars_obj = {
+            "unit_id": payload.get("unit_id"),
+            "status": payload.get("status"),
+            "eta_minutes": payload.get("eta_minutes"),
+            "location": payload.get("location"),
+            "dest_hospital_id": payload.get("dest_hospital_id")
+            or payload.get("hospital_id"),
+            "ts": payload.get("ts"),
+        }
+        vars_obj = {k: v for k, v in vars_obj.items() if v is not None}
+        self.publish(
+            self.RK_SEND_ALERT,
+            {
+                "type": "SendAlert",
+                "incident_id": incident_id,
+                "template": template,
+                "vars": vars_obj,
+            },
+            incident_id,
+        )
+
     def publish_initiate_billing(self, dispatch_payload: dict) -> None:
         """
         Publish a single, idempotent billing initiation command.
