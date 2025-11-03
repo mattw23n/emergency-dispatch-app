@@ -211,16 +211,18 @@ def automated_ambulance_workflow(dispatch_id: str, patient_id: str, ambulance_id
         time.sleep(5)
         
         onboard_event = {
+            "incident_id": dispatch_id,
             "dispatch_id": dispatch_id,
             "patient_id": patient_id,
+            "unit_id": ambulance_id,
             "ambulance_id": ambulance_id,
             "status": "onboard",
             "onboard_time": datetime.utcnow().isoformat(),
-            "timestamp": datetime.utcnow().isoformat()
+            "ts": datetime.utcnow().isoformat()
         }
         workflow_channel.basic_publish(
             exchange='amqp.topic',
-            routing_key='dispatch.updates.patient_onboard',
+            routing_key='event.dispatch.patient_onboard',
             body=json.dumps(onboard_event)
         )
         print(f"[EVENT] Published patient_onboard for {dispatch_id}")
@@ -249,17 +251,20 @@ def automated_ambulance_workflow(dispatch_id: str, patient_id: str, ambulance_id
             print(f"[EVENT] Stopping vitals monitoring for {dispatch_id}")
         
         arrived_event = {
+            "incident_id": dispatch_id,
             "dispatch_id": dispatch_id,
             "patient_id": patient_id,
+            "unit_id": ambulance_id,
             "ambulance_id": ambulance_id,
             "hospital_id": hospital_id,
+            "dest_hospital_id": hospital_id,
             "status": "arrived",
             "arrival_time": datetime.utcnow().isoformat(),
-            "timestamp": datetime.utcnow().isoformat()
+            "ts": datetime.utcnow().isoformat()
         }
         workflow_channel.basic_publish(
             exchange='amqp.topic',
-            routing_key='dispatch.updates.reached_hospital',
+            routing_key='event.dispatch.arrived_at_hospital',
             body=json.dumps(arrived_event)
         )
         print(f"[EVENT] Published reached_hospital for {dispatch_id}")
@@ -540,24 +545,35 @@ def callback(ch, method, properties, body):
                         dispatch_id = str(uuid.uuid4())
                         ambulance_id = f"amb-{dispatch_id[:8]}"
                         
-                        # Publish hospital found event
-                        publish_event("dispatch.updates.hospital_found", {
+                        # Publish ambulance assigned event (for events-manager)
+                        publish_event("event.dispatch.unit_assigned", {
+                            "incident_id": dispatch_id,
                             "dispatch_id": dispatch_id,
                             "patient_id": patient_id,
+                            "unit_id": ambulance_id,
                             "hospital_id": hospital_id,
                             "hospital_name": hospital.name,
-                            "hospital_location": {"lat": hospital.lat, "lng": hospital.lng},
-                            "distance_km": round(dist, 3)
+                            "dest_hospital_id": hospital_id,
+                            "location": {"lat": hospital.lat, "lng": hospital.lng},
+                            "distance_km": round(dist, 3),
+                            "eta_minutes": eta_min,
+                            "status": "unit_assigned",
+                            "ts": datetime.utcnow().isoformat()
                         })
                         
-                        # Publish ambulance sent event
-                        publish_event("dispatch.updates.ambulance_sent", {
+                        # Publish ambulance enroute event (for events-manager)
+                        publish_event("event.dispatch.enroute", {
+                            "incident_id": dispatch_id,
                             "dispatch_id": dispatch_id,
                             "patient_id": patient_id,
-                            "ambulance_id": ambulance_id,
+                            "unit_id": ambulance_id,
                             "hospital_id": hospital_id,
+                            "dest_hospital_id": hospital_id,
+                            "location": {"lat": hospital.lat, "lng": hospital.lng},
                             "eta_minutes": eta_min,
-                            "route": {"from": patient_loc, "to": {"lat": hospital.lat, "lng": hospital.lng}}
+                            "status": "enroute",
+                            "route": {"from": patient_loc, "to": {"lat": hospital.lat, "lng": hospital.lng}},
+                            "ts": datetime.utcnow().isoformat()
                         })
                         
                         print(f"SUCCESS: Dispatched ambulance {ambulance_id} to {hospital.name}")
