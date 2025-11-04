@@ -280,9 +280,6 @@ class AMQPSetup:
         )
 
     def start_consumers(self):
-        """
-        Start all EM consumers (Scenario 1 + 2) on a single channel/loop.
-        """
         ch = self._ch()
         ch.basic_consume(
             queue=self.Q_TRIAGE_ACTIONABLE,
@@ -294,7 +291,14 @@ class AMQPSetup:
             on_message_callback=self._on_dispatch_update,
             auto_ack=False,
         )
-        print("Events Manager consuming: triage actionable + dispatch status...")
+        ch.basic_consume(  # <-- add this
+            queue=self.Q_BILLING_STATUS,
+            on_message_callback=self._on_billing_status,
+            auto_ack=False,
+        )
+        print(
+            "Events Manager consuming: triage actionable + dispatch status + billing status"
+        )
         try:
             ch.start_consuming()
         except KeyboardInterrupt:
@@ -321,8 +325,12 @@ class AMQPSetup:
     def _on_dispatch_update(self, ch, method, properties, body):
         try:
             payload = json.loads(body)
-            # Route by exact routing key -> template
+
             self.publish_dispatch_status_alert(method.routing_key, payload)
+
+            if method.routing_key == self.RK_DISPATCH_ARRIVED:
+                self.publish_initiate_billing(payload)
+
             ch.basic_ack(delivery_tag=method.delivery_tag)
         except (KeyError, JSONDecodeError) as e:
             print(f"Bad dispatch message ({e}); dropping.", file=sys.stderr)

@@ -78,6 +78,11 @@ def _start_tap():
     print(
         "[tap] listening on cmd.notification.send_alert + cmd.dispatch.request_ambulance"
     )
+    ch.queue_bind(queue=q, exchange=ex, routing_key="cmd.billing.initiate")
+    ch.queue_bind(queue=q, exchange=ex, routing_key="event.billing.*")
+    print(
+        "[tap] listening on cmd.notification.send_alert + cmd.dispatch.request_ambulance + cmd.billing.initiate + event.billing.*"
+    )
 
     def _cb(ch_, method, props, body):
         print(
