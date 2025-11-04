@@ -10,21 +10,32 @@ app = Flask(__name__)
 CORS(app)
 
 # Database configuration
-DB_CONFIG = {
-    'host': os.environ.get('DB_HOST', 'localhost'),
-    'port': int(os.environ.get('DB_PORT', 3306)),
-    'user': os.environ.get('DB_USER', 'admin'),
-    'password': os.environ.get('DB_PASSWORD', 'cs302'),
-    'database': os.environ.get('DB_NAME', 'cs302DB')
-}
+def get_db_config():
+    """Get database configuration from environment variables."""
+    required_vars = ['DB_HOST', 'DB_PORT', 'DB_USER', 'DB_PASSWORD', 'DB_NAME']
+    missing_vars = [var for var in required_vars if not os.environ.get(var)]
+    if missing_vars:
+        raise ValueError(f"Missing required environment variables: {', '.join(missing_vars)}")
+    
+    return {
+        'host': os.environ['DB_HOST'],
+        'port': int(os.environ['DB_PORT']),
+        'user': os.environ['DB_USER'],
+        'password': os.environ['DB_PASSWORD'],
+        'database': os.environ['DB_NAME']
+    }
 
 def get_db_connection():
     """Create and return a new database connection."""
     try:
-        connection = mysql.connector.connect(**DB_CONFIG)
+        config = get_db_config()
+        connection = mysql.connector.connect(**config)
         return connection
+    except ValueError as ve:
+        print(f"Configuration error: {ve}")
+        raise
     except mysql.connector.Error as err:
-        print(f"Error connecting to database: {err}")
+        print(f"Error connecting to database {config.get('host')}:{config.get('port')}: {err}")
         raise
 
 
