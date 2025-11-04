@@ -716,7 +716,7 @@ def callback(channel, method, properties, body):
 
 def consume():
     """Start the RabbitMQ consumer."""
-    global SHOULD_STOP  # pylint: disable=global-statement
+    global SHOULD_STOP  # pylint: disable=global-statement noqa: F824
     try:
         # Ensure connection is established
         amqp.connect()
