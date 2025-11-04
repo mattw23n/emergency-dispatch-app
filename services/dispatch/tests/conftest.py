@@ -1,17 +1,19 @@
+"""Pytest configuration and fixtures for dispatch service tests."""
 import pytest
 
-from src.app import create_app, db, Hospital
+from src.app import create_app
 
 
 @pytest.fixture
 def app():
-    # Use in-memory SQLite for tests
-    app = create_app(db_uri="sqlite:///:memory:")
-    yield app
+    """Create a Flask app for testing with in-memory SQLite database."""
+    test_app = create_app(db_uri="sqlite:///:memory:")
+    yield test_app
 
 
 @pytest.fixture
 def client(app):
+    """Create a test client for the Flask app."""
     return app.test_client()
 
 
@@ -19,5 +21,5 @@ def client(app):
 def sample_hospitals(app):
     """Seed the test database with sample hospitals."""
     with app.app_context():
-        # Data is already seeded in create_app, but we can add more if needed
+        # Data is already seeded in create_app
         yield

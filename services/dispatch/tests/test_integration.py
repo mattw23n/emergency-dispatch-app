@@ -1,21 +1,21 @@
 def test_health(client):
-	r = client.get("/")
-	assert r.status_code == 200
-	data = r.get_json()
-	assert data["service"] == "hospital-dispatch-combined"
+    r = client.get("/")
+    assert r.status_code == 200
+    data = r.get_json()
+    assert data["service"] == "hospital-dispatch-combined"
 
 
 def test_best_hospital_requires_location(client):
-	r = client.post("/hospital/best", json={})
-	assert r.status_code == 400
+    r = client.post("/hospital/best", json={})
+    assert r.status_code == 400
 
 
 def test_best_hospital_returns_candidate(client):
-	payload = {"location": {"lat": 51.51, "lng": -0.12}, "severity": 2}
-	r = client.post("/hospital/best", json=payload)
-	assert r.status_code == 200
-	j = r.get_json()
-	assert "best_hospital" in j
+    payload = {"location": {"lat": 51.51, "lng": -0.12}, "severity": 2}
+    r = client.post("/hospital/best", json=payload)
+    assert r.status_code == 200
+    j = r.get_json()
+    assert "best_hospital" in j
 
 
 def test_dispatch_ambulance_picks_and_returns_201(client):
@@ -45,7 +45,12 @@ def test_list_hospitals(client):
 
 
 def test_add_hospital(client):
-    payload = {"id": "hosp-test", "name": "Test Hospital", "lat": 51.5, "lng": -0.1, "capacity": 8}
+    payload = {
+        "id": "hosp-test",
+        "name": "Test Hospital",
+        "lat": 51.5,
+        "lng": -0.1,
+        "capacity": 8}
     r = client.post("/hospital/add", json=payload)
     assert r.status_code == 201
     j = r.get_json()

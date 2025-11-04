@@ -1,3 +1,5 @@
+"""AMQP setup module for RabbitMQ connection and messaging."""
+import sys
 import time
 from os import environ
 
@@ -5,7 +7,10 @@ import pika
 
 
 class AMQPSetup:
+    """Handles RabbitMQ connection, exchange, queue setup, and messaging."""
+
     def __init__(self):
+        """Initialize AMQP connection parameters."""
         self.hostname = environ.get("RABBITMQ_HOST") or "localhost"
         self.port = int(environ.get("RABBITMQ_PORT") or 5672)
         self.connection = None
@@ -16,6 +21,7 @@ class AMQPSetup:
         self.routing_key = "cmd.dispatch.*"
 
     def connect(self):
+        """Establish connection to RabbitMQ with retry logic."""
         print(
             f"Attempting to connect to RabbitMQ at {self.hostname}:{self.port}"
         )
@@ -40,22 +46,25 @@ class AMQPSetup:
                 print("Successfully connected to RabbitMQ!")
                 self.setup()
                 print("AMQP setup completed successfully!")
-            except pika.exceptions.AMQPConnectionError as e:
-                print(f"Connection failed: {e}")
+            except pika.exceptions.AMQPConnectionError as conn_error:
+                print(f"Connection failed: {conn_error}")
                 if time.time() - start_time > max_retry_time:
                     print("Max retry time exceeded. Exiting.")
-                    exit(1)
+                    sys.exit(1)
                 print("Retrying in 2 seconds...")
                 time.sleep(2)
 
     def setup(self):
+        """Set up exchange, queue, and bindings."""
         if not self.channel or not self.channel.is_open:
             self.connect()
 
         # Declare Exchange
         print(f"Creating exchange: {self.exchange_name}")
         self.channel.exchange_declare(
-            exchange=self.exchange_name, exchange_type=self.exchange_type, durable=True
+            exchange=self.exchange_name,
+            exchange_type=self.exchange_type,
+            durable=True
         )
         print(f"Exchange {self.exchange_name} created successfully!")
 
@@ -98,11 +107,12 @@ class AMQPSetup:
             print(f"[EVENT] Published to {routing_key}: {message}")
             return True
 
-        except Exception as e:
-            print(f"[ERROR] Failed to publish event: {str(e)}")
+        except Exception as publish_error:
+            print(f"[ERROR] Failed to publish event: {str(publish_error)}")
             return False
 
     def close(self):
+        """Close the RabbitMQ connection."""
         if self.connection and self.connection.is_open:
             self.connection.close()
             print("RabbitMQ connection closed.")
