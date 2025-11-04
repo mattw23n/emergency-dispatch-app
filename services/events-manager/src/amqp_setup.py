@@ -1,6 +1,7 @@
 import json
 import os
 import sys
+import threading
 import time
 from typing import Any, Dict
 from json import JSONDecodeError
@@ -53,6 +54,8 @@ class AMQPSetup:
     }
 
     _billing_initiated_incidents: set[str] = set()
+    _dedup_lock = threading.Lock()
+    _closing = False
 
     def __init__(self):
         self.hostname = _req("RABBITMQ_HOST")
@@ -230,9 +233,11 @@ class AMQPSetup:
         Relies on incident_id uniqueness; Billing should be idempotent on incident_id too.
         """
         incident_id = dispatch_payload["incident_id"]
-        if incident_id in self._billing_initiated_incidents:
-            return  # prevent duplicate initiations from repeated dispatch events
-        self._billing_initiated_incidents.add(incident_id)
+        with self._dedup_lock:
+            if incident_id in self._billing_initiated_incidents:
+                return
+            self._billing_initiated_incidents.add(incident_id)
+            # NOTE: consider TTL/cleanup if incidents can be large in number.
 
         self.publish(
             self.RK_BILLING_INITIATE,
@@ -291,7 +296,7 @@ class AMQPSetup:
             on_message_callback=self._on_dispatch_update,
             auto_ack=False,
         )
-        ch.basic_consume(  # <-- add this
+        ch.basic_consume(
             queue=self.Q_BILLING_STATUS,
             on_message_callback=self._on_billing_status,
             auto_ack=False,
@@ -301,8 +306,18 @@ class AMQPSetup:
         )
         try:
             ch.start_consuming()
+        except (
+            pika.exceptions.StreamLostError,
+            pika.exceptions.ConnectionClosed,
+            pika.exceptions.AMQPConnectionError,
+            IndexError,
+        ) as e:
+            if self._closing:
+                print("Consumers stopped cleanly.")
+            else:
+                print(f"Consumer loop error: {e}", file=sys.stderr)
         except KeyboardInterrupt:
-            ch.stop_consuming()
+            pass
 
     def _on_triage_status(self, ch, method, properties, body):
         try:
@@ -360,8 +375,22 @@ class AMQPSetup:
         return self.channel
 
     def close(self):
+        """Graceful shutdown: stop consuming before closing socket (prevents StreamLostError)."""
+        self._closing = True
         if self.connection and self.connection.is_open:
-            self.connection.close()
+            try:
+                if self.channel and self.channel.is_open:
+                    try:
+                        # stop the blocking start_consuming loop on the IO thread
+                        self.connection.add_callback_threadsafe(
+                            lambda: self.channel.stop_consuming()
+                        )
+                    except Exception:
+                        pass
+                time.sleep(0.1)
+                self.connection.close()
+            except Exception:
+                pass
             print("RabbitMQ connection closed.")
 
 
