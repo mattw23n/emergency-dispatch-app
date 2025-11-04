@@ -22,7 +22,10 @@ from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import Float, Integer, String, create_engine, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
-import amqp_setup
+try:
+    from . import amqp_setup
+except ImportError:
+    import amqp_setup
 
 # Get database connection from environment
 # Support both legacy db_conn and individual AWS RDS configuration
