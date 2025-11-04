@@ -40,8 +40,8 @@ signal.signal(signal.SIGTERM, signal_handler)
 
 
 INSURANCE_API_URL = os.environ.get(
-    "INSURANCE_API_URL", "http://insurance:5200/insurance/verify"
-)
+    "insurance_service_url_internal"
+) + "/insurance/verify"
 
 
 def callback(ch, method, properties, body):
