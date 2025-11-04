@@ -40,14 +40,16 @@ signal.signal(signal.SIGTERM, signal_handler)
 
 
 INSURANCE_API_URL = os.environ.get(
-    "insurance_service_url", "http://localhost:8080/api/v1"
-) + "/insurance/verify"
+    "INSURANCE_API_URL", "http://insurance:5200/insurance/verify"
+)
 
 
 def callback(ch, method, properties, body):
     """Process billing initiation message."""
     try:
-        message_body = json.loads(body)
+        # Remove any trailing semicolons and whitespace before parsing JSON
+        body_str = body.decode('utf-8').strip().rstrip(';').strip()
+        message_body = json.loads(body_str)
         incident_id = message_body["incident_id"]
         patient_id = message_body["patient_id"]
         amount = 100
