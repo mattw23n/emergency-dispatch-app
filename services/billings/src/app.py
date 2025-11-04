@@ -46,56 +46,69 @@ INSURANCE_API_URL = os.environ.get(
 
 def callback(ch, method, properties, body):
     """Process billing initiation message."""
+    cnx = None
+    cursor = None
+    id = None
     try:
-        # Remove any trailing semicolons and whitespace before parsing JSON
-        body_str = body.decode('utf-8').strip().rstrip(';').strip()
+        # Parse message
+        body_str = body.decode("utf-8").strip().rstrip(";").strip()
         message_body = json.loads(body_str)
         incident_id = message_body["incident_id"]
         patient_id = message_body["patient_id"]
-        amount = 100
+        amount = message_body.get("amount", 100)
 
-        # Connect to DB and create billing record
+        # Insert billing record
         cnx = mysql.connector.connect(**DB_CONFIG)
         cursor = cnx.cursor()
-
-        # Insert new billing
         cursor.execute(
             """
             INSERT INTO billings (incident_id, patient_id, amount)
             VALUES (%s, %s, %s)
-        """,
+            """,
             (incident_id, patient_id, amount),
         )
         cnx.commit()
-
-        # Get the inserted id
         id = cursor.lastrowid
-        cnx.close()
+        print(f"SUCCESS: Created billings {id} for patient {patient_id}, amount {amount}")
 
-        print(
-            f"SUCCESS: Created billings {id} for patient {patient_id}, amount {amount}"
-        )
+        # --- Insurance verification
+        v = verify_insurance(incident_id, patient_id, amount)
 
-        # 1. Call insurance verification
-        insurance_verified = verify_insurance(incident_id, patient_id)
+        # Support both dict (new) and bool (legacy) return types
+        if isinstance(v, dict):
+            insurance_verified = bool(v.get("verified"))
+            reason = v.get("reason")
+            reason_msg = v.get("message")
+            http_status = v.get("http_status")
+        else:
+            insurance_verified = bool(v)
+            reason = "OK" if insurance_verified else "SERVICE_ERROR"
+            reason_msg = None
+            http_status = None
 
-        # 2. Process payment if insurance is verified
+        status_map = {
+            "OK": "VERIFIED",
+            "NO_POLICY": "INSURANCE_NOT_FOUND",
+            "INSUFFICIENT_COVERAGE": "INSURANCE_INSUFFICIENT_COVERAGE",
+            "SERVICE_UNAVAILABLE": "INSURANCE_SERVICE_UNAVAILABLE",
+            "SERVICE_ERROR": "INSURANCE_VERIFICATION_FAILED",
+        }
+        billing_status = status_map.get(reason, "INSURANCE_VERIFICATION_FAILED")
+
+        # --- Payment (only if verified)
         payment_reference = None
         if insurance_verified:
             try:
-                # Convert amount to cents for Stripe
                 amount_in_cents = int(float(amount) * 100)
                 payment_reference = process_payment(
                     patient_id=patient_id,
                     amount=amount_in_cents,
                     description=f"Billing for incident {incident_id}",
                 )
-                status = "PAID"
-                print(
-                    f"SUCCESS: Payment processed for billings {id}, reference: {payment_reference}"
-                )
+                billing_status = "PAID"
+                print(f"SUCCESS: Payment processed for billings {id}, reference: {payment_reference}")
 
-                # Publish payment completion notification and event
+                # Publish payment completion event
                 status_msg = {
                     "id": id,
                     "incident_id": incident_id,
@@ -103,58 +116,63 @@ def callback(ch, method, properties, body):
                     "amount": amount,
                     "status": "COMPLETED",
                     "payment_reference": payment_reference,
-                    "timestamp": datetime.datetime.utcnow().isoformat()
+                    "timestamp": datetime.datetime.utcnow().isoformat(),
                 }
-                # Publish status update using the new method
                 amqp.publish_status_update(status_msg, is_success=True)
 
             except Exception as e:
                 error_msg = str(e)
                 print(f"FAIL: Payment processing failed: {error_msg}")
-                if "card was declined" in error_msg.lower():
-                    status = "PAYMENT_DECLINED"
-                else:
-                    status = "PAYMENT_FAILED"
+                billing_status = "PAYMENT_DECLINED" if "card was declined" in error_msg.lower() else "PAYMENT_FAILED"
 
-                # Publish payment failure notification
+                # Publish payment failure event
                 try:
                     status_msg = {
                         "id": id,
                         "incident_id": incident_id,
                         "patient_id": patient_id,
                         "amount": amount,
-                        "status": status,  # This will be either PAYMENT_DECLINED or PAYMENT_FAILED
+                        "status": billing_status,
                         "error": error_msg,
-                        "timestamp": datetime.datetime.utcnow().isoformat()
+                        "timestamp": datetime.datetime.utcnow().isoformat(),
                     }
-                    # Publish status update using the new method
                     amqp.publish_status_update(status_msg, is_success=False)
                 except Exception as notify_err:
                     print(f"WARNING: Failed to send failure notification: {notify_err}")
         else:
-            status = "INSURANCE_VERIFICATION_FAILED"
-            print(f"INFO: Insurance verification failed for billings {id}")
-
-            # Publish insurance verification failure notification
+            # Not verified — publish specific insurance failure reason
+            print(
+                f"INFO: Insurance verification failed for billings {id}: "
+                f"{reason} ({http_status}) - {reason_msg}"
+            )
             try:
                 status_msg = {
                     "id": id,
                     "incident_id": incident_id,
                     "patient_id": patient_id,
                     "amount": amount,
-                    "status": "INSURANCE_VERIFICATION_FAILED",
-                    "error": "Insurance verification failed",
-                    "timestamp": datetime.datetime.utcnow().isoformat()
+                    "status": billing_status,          # e.g., INSURANCE_NOT_FOUND / INSUFFICIENT_COVERAGE / ...
+                    "error": reason_msg,
+                    "details": {"reason": reason, "http_status": http_status},
+                    "timestamp": datetime.datetime.utcnow().isoformat(),
                 }
                 amqp.publish_status_update(status_msg, is_success=False)
             except Exception as notify_err:
                 print(f"WARNING: Failed to send insurance failure notification: {notify_err}")
 
-        # 3. Update billing record with verification and payment status
-        update_billing_status(id, insurance_verified, payment_reference, status)
+        # --- Persist final status to DB
+        update_billing_status(id, insurance_verified, payment_reference, billing_status)
 
     except Exception as e:
         print(f"FAIL: Unexpected error: {str(e)}")
+    finally:
+        try:
+            if cursor:
+                cursor.close()
+        finally:
+            if cnx and cnx.is_connected():
+                cnx.close()
+
 
 
 def update_billing_status(id, insurance_verified, payment_reference, status):
@@ -221,25 +239,22 @@ def update_billing_status(id, insurance_verified, payment_reference, status):
 
 def verify_insurance(incident_id, patient_id, amount=None):
     """
-    Verify insurance coverage with the insurance service.
-
-    Args:
-        incident_id (str): The ID of the incident being billed
-        patient_id (str): The ID of the patient
-        amount (float, optional): The amount to verify coverage for. If not provided,
-                                will be fetched from the billing record.
-
-    Returns:
-        bool: True if insurance verification is successful, False otherwise
+    Call insurance service and return a structured result:
+    {
+      "verified": bool,
+      "reason": "OK|NO_POLICY|INSUFFICIENT_COVERAGE|SERVICE_UNAVAILABLE|SERVICE_ERROR",
+      "message": str,
+      "http_status": int|None
+    }
     """
     import requests
+    import os
 
     try:
-        # If amount is not provided, get it from the billing record
+        # Get amount from DB if not provided
         if amount is None:
             cnx = mysql.connector.connect(**DB_CONFIG)
             cursor = cnx.cursor(dictionary=True)
-
             cursor.execute(
                 """
                 SELECT amount FROM billings
@@ -248,65 +263,60 @@ def verify_insurance(incident_id, patient_id, amount=None):
                 """,
                 (incident_id, patient_id),
             )
-
-            result = cursor.fetchone()
+            row = cursor.fetchone()
             cursor.close()
             cnx.close()
+            if not row:
+                return {"verified": False, "reason": "SERVICE_ERROR",
+                        "message": f"No billing record found for incident {incident_id} / patient {patient_id}",
+                        "http_status": None}
+            amount = float(row["amount"])
 
-            if not result:
-                print(f"No billing record found for incident {incident_id} and patient {patient_id}")
-                return False
+        base = os.environ.get("insurance_service_url_internal", "http://insurance:5200").rstrip("/")
+        url = f"{base}/insurance/verify"
 
-            try:
-                amount = float(result['amount'])
-            except (ValueError, KeyError) as e:
-                print(f"Invalid amount in database: {str(e)}")
-                return False
-
-        # Prepare the request to insurance service
-        headers = {"Content-Type": "application/json"}
-        payload = {
-            "patient_id": patient_id,
-            "incident_id": incident_id,
-            "amount": amount,
-        }
-        
-        response = requests.post(
-            INSURANCE_API_URL,
-            json=payload,
-            headers=headers,
-            timeout=10,  # 10 seconds timeout
-        )
-        
-        # Check if the request was successful
-        response.raise_for_status()
-
-        # Parse the response
-        result = response.json()
-
-        if result.get("verified"):
-            print(
-                f"Insurance verification successful: {
-                    result.get(
-                        'message',
-                        '')}"
+        try:
+            r = requests.post(
+                url,
+                json={"patient_id": patient_id, "incident_id": incident_id, "amount": amount},
+                headers={"Content-Type": "application/json"},
+                timeout=10,
             )
-            return True
-        else:
-            print(
-                f"Insurance verification failed: {
-                    result.get(
-                        'message',
-                        'Unknown error')}"
-            )
-            return False
+        except requests.exceptions.RequestException as e:
+            # Real connectivity/timeout/DNS error
+            print(f"Insurance service network error: {e}")
+            return {"verified": False, "reason": "SERVICE_UNAVAILABLE", "message": str(e), "http_status": None}
 
-    except requests.exceptions.RequestException as e:
-        print(f"Error communicating with insurance service: {str(e)}")
-        return False
+        # Try to decode JSON for messages even on non-200
+        try:
+            payload = r.json()
+        except ValueError:
+            payload = {}
+
+        if r.status_code == 200 and payload.get("verified") is True:
+            print(f"Insurance verification successful: {payload.get('message', '')}")
+            return {"verified": True, "reason": "OK", "message": payload.get("message", ""), "http_status": 200}
+
+        if r.status_code == 404:
+            # No policy for patient (your insurance API returns this)
+            msg = payload.get("message", "No active policy found for patient")
+            print(f"Insurance policy not found for patient {patient_id}: {msg}")
+            return {"verified": False, "reason": "NO_POLICY", "message": msg, "http_status": 404}
+
+        if r.status_code == 402:
+            # Insufficient coverage (your insurance API returns this)
+            msg = payload.get("message", "Insufficient coverage")
+            print(f"Insurance insufficient coverage for patient {patient_id}: {msg}")
+            return {"verified": False, "reason": "INSUFFICIENT_COVERAGE", "message": msg, "http_status": 402}
+
+        # Any other 4xx/5xx from insurance service
+        msg = payload.get("error") or payload.get("message") or r.text
+        print(f"Insurance service error ({r.status_code}): {msg}")
+        return {"verified": False, "reason": "SERVICE_ERROR", "message": msg, "http_status": r.status_code}
+
     except Exception as e:
         print(f"Unexpected error during insurance verification: {str(e)}")
-        return False
+        return {"verified": False, "reason": "SERVICE_ERROR", "message": str(e), "http_status": None}
 
 
 def process_payment(patient_id, amount, description):
