@@ -59,7 +59,7 @@ class TestTriageIntegration:
             "patient_id": "P456",
             "device": {"id": "wearable-2", "model": "HealthTracker v2"},
             "location": {"lat": 1.290270, "lng": 103.851959},
-            "timestampMs": int(time.time() * 1000),
+            "timestamp": int(time.time() * 1000),
             "metrics": {
                 "heartRateBpm": 35,  # Emergency - too low
                 "spO2Percentage": 96.0,

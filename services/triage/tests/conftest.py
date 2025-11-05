@@ -60,7 +60,7 @@ def sample_wearable_data():
             "userId": "P123",
             "device": {"id": "wearable-1", "model": "HealthTracker v1"},
             "location": {"lat": 1.290270, "lng": 103.851959},
-            "timestampMs": int(time.time() * 1000),
+            "timestamp": int(time.time() * 1000),
             "metrics": {
                 "heartRateBpm": 75,
                 "spO2Percentage": 98.5,
@@ -74,7 +74,7 @@ def sample_wearable_data():
             "userId": "P123",
             "device": {"id": "wearable-1", "model": "HealthTracker v1"},
             "location": {"lat": 1.290270, "lng": 103.851959},
-            "timestampMs": int(time.time() * 1000),
+            "timestamp": int(time.time() * 1000),
             "metrics": {
                 "heartRateBpm": 110,  # Abnormal
                 "spO2Percentage": 93.0,  # Abnormal
@@ -88,7 +88,7 @@ def sample_wearable_data():
             "userId": "P123",
             "device": {"id": "wearable-1", "model": "HealthTracker v1"},
             "location": {"lat": 1.290270, "lng": 103.851959},
-            "timestampMs": int(time.time() * 1000),
+            "timestamp": int(time.time() * 1000),
             "metrics": {
                 "heartRateBpm": 160,  # Emergency
                 "spO2Percentage": 88.0,  # Emergency
