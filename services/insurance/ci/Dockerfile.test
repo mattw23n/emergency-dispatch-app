@@ -1,11 +1,16 @@
 FROM python:3.13-slim
 WORKDIR /usr/src/app
-COPY requirements.txt ./
+
+# Install wait-for-it and test dependencies
 COPY ci/requirements.test.txt ./
 COPY ci/wait-for-it.sh .
-COPY src/ ./src/
-COPY tests/*.py ./tests/
 RUN chmod +x wait-for-it.sh
-RUN pip install --no-cache-dir -r requirements.txt
 RUN pip install --no-cache-dir -r requirements.test.txt
-CMD ./wait-for-it.sh mysql:3306 -- python -m pytest
+
+# Copy test files
+COPY tests/ ./tests/
+
+# Wait for insurance service to be ready, then run pytest
+# Note: No need to wait for MySQL since we're using AWS RDS
+CMD ./wait-for-it.sh insurance-service:5200 -- \
+    python -m pytest tests/ -v

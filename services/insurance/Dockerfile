@@ -2,6 +2,9 @@ FROM node:18-alpine
 
 WORKDIR /usr/src/app
 
+# Install wget for healthcheck
+RUN apk add --no-cache wget
+
 # Install dependencies
 COPY package*.json ./
 RUN npm install --production

@@ -1,61 +1,54 @@
 """Test configuration and fixtures for insurance service."""
 
+import os
 import pytest
-from sqlalchemy import text
+import mysql.connector
+
+
+@pytest.fixture(scope="session")
+def db_connection():
+    """Create database connection for tests."""
+    connection = mysql.connector.connect(
+        host=os.environ.get('DB_HOST', 'localhost'),
+        port=int(os.environ.get('DB_PORT', 3306)),
+        user=os.environ.get('DB_USER', 'root'),
+        password=os.environ.get('DB_PASSWORD', 'root'),
+        database=os.environ.get('DB_NAME', 'cs302DB')
+    )
+    yield connection
+    connection.close()
 
 
 @pytest.fixture
-def client():
-    """Create test client with fresh database."""
-    from src import app
+def setup_database(db_connection):
+    """Setup fresh test data before each test."""
+    cursor = db_connection.cursor()
+    
+    # Clean existing test data
+    cursor.execute("DELETE FROM insurance_policies WHERE patient_id LIKE 'TEST%'")
+    db_connection.commit()
+    
+    # Insert test data
+    test_policies = [
+        ('TEST001', 'AIA Singapore', 3000.00),
+        ('TEST002', 'Prudential', 1500.00),
+    ]
+    
+    cursor.executemany(
+        "INSERT INTO insurance_policies (patient_id, provider_name, coverage_amount) VALUES (%s, %s, %s)",
+        test_policies
+    )
+    db_connection.commit()
+    
+    yield
+    
+    # Cleanup after test
+    cursor.execute("DELETE FROM insurance_policies WHERE patient_id LIKE 'TEST%'")
+    db_connection.commit()
+    cursor.close()
 
-    app.app.config["TESTING"] = True
 
-    # Prepare a clean DB state before each test session
-    with app.app.app_context():
-        with app.db.engine.begin() as connection:
-            # Drop existing insurance table if exists
-            connection.execute(
-                text("DROP TABLE IF EXISTS `insurance_policies`;")
-            )
-
-            # Create fresh insurance_policies table
-            connection.execute(
-                text(
-                    """
-                CREATE TABLE `insurance_policies` (
-                    `policy_id` int(11) NOT NULL AUTO_INCREMENT,
-                    `patient_id` varchar(64) NOT NULL,
-                    `provider_name` varchar(128) NOT NULL,
-                    `coverage_amount` float NOT NULL,
-                    `policy_status` varchar(20) NOT NULL DEFAULT 'ACTIVE',
-                    `created_at` datetime DEFAULT CURRENT_TIMESTAMP,
-                    `updated_at` datetime DEFAULT CURRENT_TIMESTAMP
-                        ON UPDATE CURRENT_TIMESTAMP,
-                    PRIMARY KEY (`policy_id`)
-                ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
-            """
-                )
-            )
-
-            # Seed initial test data
-            connection.execute(
-                text(
-                    """
-                INSERT INTO `insurance_policies`
-                    (`policy_id`, `patient_id`, `provider_name`,
-                     `coverage_amount`, `policy_status`,
-                     `created_at`, `updated_at`)
-                VALUES
-                    (1, 'PAT001', 'AIA Singapore', 3000.00,
-                     'ACTIVE', '2025-10-05 10:00:00',
-                     '2025-10-05 10:00:00'),
-                    (2, 'PAT002', 'Prudential', 1500.00,
-                     'INACTIVE', '2025-10-05 10:05:00',
-                     '2025-10-05 10:05:00');
-            """
-                )
-            )
-
-    # Return Flask test client
-    return app.app.test_client()
+@pytest.fixture
+def service_url():
+    """Return the base URL for the insurance service."""
+    return os.environ.get('INSURANCE_SERVICE_URL', 'http://localhost:5200')
