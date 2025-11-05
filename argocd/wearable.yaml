@@ -8,7 +8,7 @@ spec:
   source:
     repoURL: https://gitlab.com/cs302-2025/g2-team5/k8s.git
     targetRevision: HEAD
-    path: .
+    path: wearable.yaml
   destination:
     server: https://kubernetes.default.svc
     namespace: default
