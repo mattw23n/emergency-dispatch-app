@@ -67,11 +67,17 @@ gitleaks:
 
 zap:
   stage: Security Testing
-  image: zaproxy/zap-stable:latest
+  image: docker:latest
+  services:
+    - docker:dind
   before_script:
     - mkdir -p zap-wrk
+    - docker info
   script:
-    - zap-baseline.py -t https://staging.example.com -r zap-wrk/zap.html  # :contentReference[oaicite:26]{index=26}
+    - docker run --rm \
+        -v "$CI_PROJECT_DIR/zap-wrk":/zap/wrk:rw \
+        zaproxy/zap-stable:latest \
+        zap-baseline.py -t https://staging.example.com -r /zap/wrk/zap.html
   artifacts:
     when: always
     paths:
