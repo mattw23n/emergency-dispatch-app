@@ -15,5 +15,10 @@ COPY src/ ./src/
 # Expose the port the app runs on
 EXPOSE 5200
 
+# Create a non-root user (Alpine uses adduser, not useradd)
+RUN adduser -D appuser && \
+    chown -R appuser:appuser /usr/src/app
+USER appuser
+
 # Start the application
 CMD ["node", "src/app.js"]
