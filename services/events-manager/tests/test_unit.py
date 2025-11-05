@@ -58,6 +58,7 @@ def test_dispatch_enroute_alert_mapping(em, monkeypatch, fake_channel):
     rk = em.RK_DISPATCH_ENROUTE
     payload = {
         "incident_id": "inc-2",
+        "patient_id": "P999",
         "unit_id": "AMB-33",
         "status": "enroute",
         "eta_minutes": 7,
