@@ -64,25 +64,25 @@ server {
   }
 
   # Server-Sent Events (SSE) endpoint for real-time event streaming
-  location /api/v1/events {
-    proxy_pass http://events-stream:8090/events;
-    proxy_set_header Connection '';
-    proxy_http_version 1.1;
-    chunked_transfer_encoding off;
-    proxy_buffering off;
-    proxy_cache off;
-    proxy_read_timeout 86400s;
-    add_header 'Access-Control-Allow-Origin' '*' always;
-    add_header 'Access-Control-Allow-Credentials' 'true' always;
-    add_header 'Cache-Control' 'no-cache' always;
-  }
+#  location /api/v1/events {
+#    proxy_pass ${event_stream_service_url_internal}/events/;
+#    proxy_set_header Connection '';
+#    proxy_http_version 1.1;
+#    chunked_transfer_encoding off;
+#    proxy_buffering off;
+#    proxy_cache off;
+#    proxy_read_timeout 86400s;
+#    add_header 'Access-Control-Allow-Origin' '*' always;
+#    add_header 'Access-Control-Allow-Credentials' 'true' always;
+#    add_header 'Cache-Control' 'no-cache' always;
+#  }
 
-  # Health check for events-stream service
-  location /api/v1/events-stream/ {
-    proxy_pass http://events-stream:8090/;
-    add_header 'Access-Control-Allow-Origin' '*' always;
-    add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, OPTIONS' always;
-    add_header 'Access-Control-Allow-Headers' 'Content-Type, Authorization' always;
-  }
+  # Health check for event-stream service
+#  location /api/v1/event-stream/ {
+#    proxy_pass ${event_stream_service_url_internal}/;
+#    add_header 'Access-Control-Allow-Origin' '*' always;
+#    add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, OPTIONS' always;
+#    add_header 'Access-Control-Allow-Headers' 'Content-Type, Authorization' always;
+#  }
 
 }
