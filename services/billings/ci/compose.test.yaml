@@ -1,12 +1,71 @@
-  ##################################
-  # Pytest on Billings Service
-  ##################################
+services:
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    container_name: rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      # Allow 'guest' to connect from other containers
+      RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS: "-rabbit loopback_users []"
+      RABBITMQ_DEFAULT_VHOST: /
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  mysql:
+    image: mysql:8.0
+    container_name: mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpw
+      MYSQL_DATABASE: cs302DB
+      MYSQL_USER: cs302
+      MYSQL_PASSWORD: cs302pw
+    command: ["--default-authentication-plugin=mysql_native_password"]
+    ports:
+      - "3306:3306"
+    volumes:
+      - ../tests/sql:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-prootpw"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
   billings-pytest:
     build:
       context: ../
       dockerfile: ci/Dockerfile.test
+    container_name: billings-pytest
     depends_on:
-      - mysql
+      rabbitmq:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
     environment:
-      db_conn: mysql+mysqlconnector://root:root@mysql:3306
+      # App ports
+      PORT: "5100"
 
+      # RabbitMQ
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: "5672"
+      AMQP_EXCHANGE_NAME: amqp.topic
+      AMQP_EXCHANGE_TYPE: topic
+
+      # DB
+      DB_HOST: mysql
+      DB_PORT: "3306"
+      DB_USER: cs302
+      DB_PASSWORD: cs302pw
+      DB_NAME: cs302DB
+
+      insurance_service_url_internal: http://insurance:5200
+      STRIPE_SECRET_KEY: "sk_test_dummy"
+
+      # Python
+      PYTHONUNBUFFERED: "1"
+      PYTHONDONTWRITEBYTECODE: "1"
+    working_dir: /app
+    command: ["pytest", "-q", "--disable-warnings", "-rA"]

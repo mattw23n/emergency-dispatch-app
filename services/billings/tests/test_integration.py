@@ -1,131 +1,100 @@
-"""Integration tests for Billings service (HTTP-based).
-
-Tests assume the billings service is reachable via the `service_url` fixture
-and that the database is accessible (AWS RDS or CI database configured).
-"""
-
-import pytest
-import requests
+import json
+import os
 import time
+import uuid
+
+import pika
+import pytest
 
 
-def call_get(url):
-    return requests.get(url, timeout=10)
+EX = os.environ["AMQP_EXCHANGE_NAME"]
+EX_TYPE = os.environ["AMQP_EXCHANGE_TYPE"]
 
 
-def call_post(url, json_body):
-    return requests.post(url, json=json_body, timeout=10)
+def _amqp_params():
+    return pika.ConnectionParameters(
+        host=os.environ["RABBITMQ_HOST"],
+        port=int(os.environ["RABBITMQ_PORT"]),
+        virtual_host="/",
+    )
 
 
-# --- TESTS ---
-
-@pytest.mark.dependency()
-def test_health(service_url):
-    resp = call_get(f"{service_url}/health")
-    assert resp.status_code == 200
-    data = resp.json()
-    assert data.get("service") in ("billings", "billings-service", "billings-service-http") or "status" in data
-
-
-@pytest.mark.dependency(depends=["test_health"])
-def test_get_all_bills(service_url, setup_database):
-    resp = call_get(f"{service_url}/billings")
-    # Accept 200 with data or 404 if none
-    assert resp.status_code in (200, 404)
-    if resp.status_code == 200:
-        json = resp.json()
-        assert "data" in json or isinstance(json, dict)
-
-
-@pytest.mark.dependency(depends=["test_get_all_bills"])
-def test_create_bill_missing_fields(service_url):
-    # Missing required fields should return 400
-    resp = call_post(f"{service_url}/billings", json_body={})
-    assert resp.status_code == 400
-    j = resp.json()
-    assert "error" in j or "message" in j
+def _publish(rk: str, body: dict, corr_id: str | None = None):
+    conn = pika.BlockingConnection(_amqp_params())
+    try:
+        ch = conn.channel()
+        ch.exchange_declare(exchange=EX, exchange_type=EX_TYPE, durable=True)
+        ch.basic_publish(
+            exchange=EX,
+            routing_key=rk,
+            body=json.dumps(body),
+            properties=pika.BasicProperties(
+                content_type="application/json",
+                delivery_mode=2,
+                correlation_id=corr_id or body.get("incident_id"),
+                type=body.get("type", "InitiateBilling"),
+                app_id="itests",
+            ),
+        )
+    finally:
+        conn.close()
 
 
-@pytest.mark.dependency(depends=["test_create_bill_missing_fields"])
-def test_create_bill_valid(service_url):
-    body = {
-        "incident_id": "INC-TEST-NEW",
-        "patient_id": "TEST-NEW-001",
-        "amount": 1234.56
+def test_integration_billing_completed(run_consumer, bind_and_get_one, fake_stripe_module, monkeypatch, billings_app_module):
+    """
+    Publish cmd.billing.initiate, expect event.billing.completed with status COMPLETED.
+    """
+    # Make sure insurance passes
+    monkeypatch.setattr(
+        billings_app_module,
+        "verify_insurance",
+        lambda incident_id, patient_id, amount=None: {"verified": True, "reason": "OK", "message": "ok", "http_status": 200},
+    )
+    # Stripe success via fake module
+    fake_stripe_module.process_stripe_payment = lambda **kw: {"success": True, "payment_intent_id": "pi_it_ok", "client_secret": "cs"}
+
+    incident_id = str(uuid.uuid4())
+    payload = {
+        "incident_id": incident_id,
+        "patient_id": "P123",
+        "amount": 123.45,
     }
-    resp = call_post(f"{service_url}/billings", json_body=body)
-    assert resp.status_code in (201, 200)
-    j = resp.json()
-    # Accept either direct created object under data or the created id
-    if isinstance(j, dict):
-        if "data" in j:
-            entry = j["data"]
-        else:
-            entry = j
-        assert entry.get("patient_id") == body["patient_id"]
-        assert float(entry.get("amount", 0)) == pytest.approx(body["amount"], rel=1e-3)
+
+    _publish("cmd.billing.initiate", payload, corr_id=incident_id)
+
+    # Bind and wait for the completed event
+    msg = bind_and_get_one("event.billing.completed", timeout_s=8.0)
+    assert msg is not None, "Did not receive event.billing.completed"
+    assert msg["incident_id"] == incident_id
+    assert msg["status"] == "COMPLETED"
+    assert float(msg["amount"]) == 123.45
 
 
-@pytest.mark.dependency(depends=["test_create_bill_valid"])
-def test_get_one_bill(service_url, db_connection):
-    # Find a test bill inserted in conftest
-    cursor = db_connection.cursor(dictionary=True)
-    cursor.execute("SELECT bill_id FROM billings WHERE patient_id LIKE 'TEST-%' ORDER BY created_at DESC LIMIT 1")
-    row = cursor.fetchone()
-    cursor.close()
-    assert row is not None
-    bill_id = row["bill_id"]
+def test_integration_insurance_no_policy(run_consumer, event_sniffer, fake_stripe_module, monkeypatch, billings_app_module):
+    """
+    Publish cmd.billing.initiate, force insurance NO_POLICY; expect event.billing.failed with INSURANCE_NOT_FOUND.
+    """
+    monkeypatch.setattr(
+        billings_app_module,
+        "verify_insurance",
+        lambda incident_id, patient_id, amount=None: {
+            "verified": False, "reason": "NO_POLICY", "message": "no policy", "http_status": 404
+        },
+    )
 
-    resp = call_get(f"{service_url}/billings/{bill_id}")
-    assert resp.status_code in (200, 404)
-    if resp.status_code == 200:
-        j = resp.json()
-        # Normalize response shape: prefer `data` field when present
-        if isinstance(j, dict) and "data" in j:
-            data = j.get("data") or {}
-        elif isinstance(j, dict):
-            data = j
-        else:
-            data = {}
+    incident_id = str(uuid.uuid4())
+    payload = {
+        "incident_id": incident_id,
+        "patient_id": "P999",
+        "amount": 50.00,
+    }
 
-        # Safely extract bill id and assert
-        bill_val = data.get("bill_id") if isinstance(data, dict) else None
-        bill_val = bill_val or bill_id
-        assert int(bill_val) == bill_id
+    get_failed = event_sniffer("event.billing.failed")
 
+    _publish("cmd.billing.initiate", payload, corr_id=incident_id)
 
-@pytest.mark.dependency(depends=["test_get_one_bill"])
-def test_update_bill_status(service_url, db_connection):
-    cursor = db_connection.cursor(dictionary=True)
-    cursor.execute("SELECT bill_id FROM billings WHERE patient_id LIKE 'TEST-%' ORDER BY created_at DESC LIMIT 1")
-    row = cursor.fetchone()
-    cursor.close()
-    assert row is not None
-    bill_id = row["bill_id"]
+    msg = get_failed(timeout_s=8.0)
+    assert msg is not None, "Did not receive event.billing.failed"
+    assert msg.get("status") == "INSURANCE_NOT_FOUND"
+    assert msg.get("incident_id") == incident_id
 
-    # Update status to PAID
-    resp = requests.put(f"{service_url}/billings/{bill_id}", json={"status": "PAID"}, timeout=10)
-    assert resp.status_code in (200, 204)
-
-    # Give the service a moment to persist
-    time.sleep(0.5)
-
-    # Verify DB updated
-    cursor = db_connection.cursor(dictionary=True)
-    cursor.execute("SELECT status FROM billings WHERE bill_id = %s", (bill_id,))
-    srow = cursor.fetchone()
-    cursor.close()
-    assert srow is not None
-    assert srow["status"] in ("PAID", "paid", "COMPLETED", "COMPLETED")
-
-
-@pytest.mark.dependency(depends=["test_update_bill_status"])
-def test_verify_billing_flow(service_url):
-    # If billings triggers an insurance verify endpoint, test that the verify path exists
-    resp = call_post(f"{service_url}/billings/verify", json_body={"patient_id": "TEST-001", "incident_id": "INC-TEST-001", "amount": 100.0})
-    # Accept 200 or 404 depending on implementation
-    assert resp.status_code in (200, 404, 400)
-    j = resp.json()
-    # If 200, expect verified boolean or details
-    if resp.status_code == 200:
-        assert "verified" in j or "details" in j

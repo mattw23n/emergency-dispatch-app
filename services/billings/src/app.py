@@ -2,8 +2,8 @@ import datetime
 import json
 import os
 import signal
-import sys
 from threading import Thread
+import time
 
 import mysql.connector
 import pika
@@ -11,7 +11,7 @@ from flask import Flask, jsonify
 
 import amqp_setup
 
-# Create a singleton instance
+# Create a singleton AMQP helper
 amqp = amqp_setup.AMQPSetup()
 
 # Database configuration
@@ -23,32 +23,37 @@ DB_CONFIG = {
     "database": os.environ.get("DB_NAME", "cs302DB"),
 }
 
+# Light retry wrapper to avoid transient startup races
+def _mysql_connect_with_retries(retries: int = 10, delay: float = 0.5):
+    last_err = None
+    for _ in range(retries):
+        try:
+            return mysql.connector.connect(**DB_CONFIG)
+        except mysql.connector.Error as e:
+            last_err = e
+            time.sleep(delay)
+    raise last_err
 
 # Flag to control the consumer loop
 should_stop = False
-
 
 def signal_handler(sig, frame):
     global should_stop
     print("Stopping consumer...")
     should_stop = True
 
-
 # Register signal handlers
 signal.signal(signal.SIGINT, signal_handler)
 signal.signal(signal.SIGTERM, signal_handler)
 
-
-INSURANCE_API_URL = (
-    os.environ.get("insurance_service_url_internal") + "/insurance/verify"
-)
-
+INSURANCE_API_URL = (os.environ.get("insurance_service_url_internal", "http://insurance:5200").rstrip("/") +
+                     "/insurance/verify")
 
 def callback(ch, method, properties, body):
     """Process billing initiation message."""
     cnx = None
     cursor = None
-    id = None
+    billing_id = None
     try:
         # Parse message
         body_str = body.decode("utf-8").strip().rstrip(";").strip()
@@ -58,7 +63,7 @@ def callback(ch, method, properties, body):
         amount = message_body.get("amount", 100)
 
         # Insert billing record
-        cnx = mysql.connector.connect(**DB_CONFIG)
+        cnx = _mysql_connect_with_retries()
         cursor = cnx.cursor()
         cursor.execute(
             """
@@ -68,10 +73,8 @@ def callback(ch, method, properties, body):
             (incident_id, patient_id, amount),
         )
         cnx.commit()
-        id = cursor.lastrowid
-        print(
-            f"SUCCESS: Created billings {id} for patient {patient_id}, amount {amount}"
-        )
+        billing_id = cursor.lastrowid
+        print(f"SUCCESS: Created billings {billing_id} for patient {patient_id}, amount {amount}")
 
         # --- Insurance verification
         v = verify_insurance(incident_id, patient_id, amount)
@@ -108,13 +111,11 @@ def callback(ch, method, properties, body):
                     description=f"Billing for incident {incident_id}",
                 )
                 billing_status = "PAID"
-                print(
-                    f"SUCCESS: Payment processed for billings {id}, reference: {payment_reference}"
-                )
+                print(f"SUCCESS: Payment processed for billings {billing_id}, reference: {payment_reference}")
 
                 # Publish payment completion event
                 status_msg = {
-                    "billing_id": id,
+                    "billing_id": billing_id,
                     "incident_id": incident_id,
                     "patient_id": patient_id,
                     "amount": amount,
@@ -136,7 +137,7 @@ def callback(ch, method, properties, body):
                 # Publish payment failure event
                 try:
                     status_msg = {
-                        "billing_id": id,
+                        "billing_id": billing_id,
                         "incident_id": incident_id,
                         "patient_id": patient_id,
                         "amount": amount,
@@ -150,28 +151,26 @@ def callback(ch, method, properties, body):
         else:
             # Not verified — publish specific insurance failure reason
             print(
-                f"INFO: Insurance verification failed for billings {id}: "
+                f"INFO: Insurance verification failed for billings {billing_id}: "
                 f"{reason} ({http_status}) - {reason_msg}"
             )
             try:
                 status_msg = {
-                    "billing_id": id,
+                    "billing_id": billing_id,
                     "incident_id": incident_id,
                     "patient_id": patient_id,
                     "amount": amount,
-                    "status": billing_status,  # e.g., INSURANCE_NOT_FOUND / INSUFFICIENT_COVERAGE / ...
+                    "status": billing_status,  # INSURANCE_NOT_FOUND / INSUFFICIENT_COVERAGE / ...
                     "error": reason_msg,
                     "details": {"reason": reason, "http_status": http_status},
                     "timestamp": datetime.datetime.utcnow().isoformat(),
                 }
                 amqp.publish_status_update(status_msg, is_success=False)
             except Exception as notify_err:
-                print(
-                    f"WARNING: Failed to send insurance failure notification: {notify_err}"
-                )
+                print(f"WARNING: Failed to send insurance failure notification: {notify_err}")
 
         # --- Persist final status to DB
-        update_billing_status(id, insurance_verified, payment_reference, billing_status)
+        update_billing_status(billing_id, insurance_verified, payment_reference, billing_status)
 
     except Exception as e:
         print(f"FAIL: Unexpected error: {str(e)}")
@@ -183,13 +182,11 @@ def callback(ch, method, properties, body):
             if cnx and cnx.is_connected():
                 cnx.close()
 
-
 def update_billing_status(id, insurance_verified, payment_reference, status):
-    """Update billing record with verification and payment status."""
+    """Update billing record with verification and payment status, then return. No consumer loops here."""
     try:
-        cnx = mysql.connector.connect(**DB_CONFIG)
+        cnx = _mysql_connect_with_retries()
         cursor = cnx.cursor()
-
         cursor.execute(
             """
             UPDATE billings
@@ -198,13 +195,11 @@ def update_billing_status(id, insurance_verified, payment_reference, status):
                 payment_reference = %s,
                 updated_at = NOW()
             WHERE id = %s
-        """,
+            """,
             (status, insurance_verified, payment_reference, id),
         )
-
         cnx.commit()
         print(f"Updated billings {id} with status: {status}")
-
     except mysql.connector.Error as err:
         print(f"Error updating billings status: {err}")
         raise
@@ -212,39 +207,6 @@ def update_billing_status(id, insurance_verified, payment_reference, status):
         if "cnx" in locals() and cnx.is_connected():
             cursor.close()
             cnx.close()
-    try:
-        # Ensure connection is established
-        amqp.connect()
-
-        # Set up consumer
-        amqp.channel.basic_consume(
-            queue=amqp.queue_name, on_message_callback=callback, auto_ack=True
-        )
-
-        print(" [*] Waiting for messages. To exit press CTRL+C")
-
-        # Start consuming
-        while not should_stop:
-            try:
-                # Process any pending events and sleep for 1 second
-                amqp.connection.process_data_events()
-                amqp.connection.sleep(1)
-            except pika.exceptions.AMQPConnectionError:
-                print("Connection lost. Attempting to reconnect...")
-                amqp.connect()
-                amqp.channel.basic_consume(
-                    queue=amqp.queue_name, on_message_callback=callback, auto_ack=True
-                )
-
-    except KeyboardInterrupt:
-        print("Interrupted")
-    except Exception as e:
-        print(f"Error in consumer: {e}")
-    finally:
-        if hasattr(amqp, "connection") and amqp.connection and amqp.connection.is_open:
-            amqp.close()
-        sys.exit(0)
-
 
 def verify_insurance(incident_id, patient_id, amount=None):
     """
@@ -257,12 +219,11 @@ def verify_insurance(incident_id, patient_id, amount=None):
     }
     """
     import requests
-    import os
 
     try:
         # Get amount from DB if not provided
         if amount is None:
-            cnx = mysql.connector.connect(**DB_CONFIG)
+            cnx = _mysql_connect_with_retries()
             cursor = cnx.cursor(dictionary=True)
             cursor.execute(
                 """
@@ -284,10 +245,7 @@ def verify_insurance(incident_id, patient_id, amount=None):
                 }
             amount = float(row["amount"])
 
-        base = os.environ.get(
-            "insurance_service_url_internal", "http://insurance:5200"
-        ).rstrip("/")
-        url = f"{base}/insurance/verify"
+        url = INSURANCE_API_URL
 
         try:
             r = requests.post(
@@ -326,7 +284,6 @@ def verify_insurance(incident_id, patient_id, amount=None):
             }
 
         if r.status_code == 404:
-            # No policy for patient (your insurance API returns this)
             msg = payload.get("message", "No active policy found for patient")
             print(f"Insurance policy not found for patient {patient_id}: {msg}")
             return {
@@ -337,7 +294,6 @@ def verify_insurance(incident_id, patient_id, amount=None):
             }
 
         if r.status_code == 402:
-            # Insufficient coverage (your insurance API returns this)
             msg = payload.get("message", "Insufficient coverage")
             print(f"Insurance insufficient coverage for patient {patient_id}: {msg}")
             return {
@@ -366,9 +322,8 @@ def verify_insurance(incident_id, patient_id, amount=None):
             "http_status": None,
         }
 
-
 def process_payment(patient_id, amount, description):
-    """Process payment using Stripe."""
+    """Process payment using Stripe. Amount is in cents."""
     from stripe_service import process_stripe_payment
 
     try:
@@ -389,30 +344,30 @@ def process_payment(patient_id, amount, description):
         print(f"Error in process_payment: {str(e)}")
         raise
 
-
 def consume():
     """Start the RabbitMQ consumer."""
+    consumer_tag = None
     try:
-        # Ensure connection is established
         amqp.connect()
 
-        # Set up consumer
-        amqp.channel.basic_consume(
+        # Capture the consumer tag so we can cancel cleanly during teardown
+        consumer_tag = amqp.channel.basic_consume(
             queue=amqp.queue_name, on_message_callback=callback, auto_ack=True
         )
 
         print(" [*] Waiting for messages. To exit press CTRL+C")
 
-        # Start consuming
         while not should_stop:
             try:
-                # Process any pending events and sleep for 1 second
                 amqp.connection.process_data_events()
                 amqp.connection.sleep(1)
             except pika.exceptions.AMQPConnectionError:
+                if should_stop:
+                    # We're stopping anyway; don't reconnect during teardown.
+                    break
                 print("Connection lost. Attempting to reconnect...")
                 amqp.connect()
-                amqp.channel.basic_consume(
+                consumer_tag = amqp.channel.basic_consume(
                     queue=amqp.queue_name, on_message_callback=callback, auto_ack=True
                 )
 
@@ -421,14 +376,18 @@ def consume():
     except Exception as e:
         print(f"Error in consumer: {e}")
     finally:
+        try:
+            if consumer_tag and amqp.channel and amqp.channel.is_open:
+                amqp.channel.basic_cancel(consumer_tag=consumer_tag)
+        except Exception:
+            pass
+
         if hasattr(amqp, "connection") and amqp.connection and amqp.connection.is_open:
             amqp.close()
-        sys.exit(0)
 
 
 # Initialize Flask app
 app = Flask(__name__)
-
 
 @app.route("/health")
 def health_check():
@@ -439,7 +398,7 @@ def health_check():
     # Check database connection
     try:
         cnx = mysql.connector.connect(
-            **{**DB_CONFIG, "connection_timeout": 5, "buffered": True}
+            **{**DB_CONFIG, "connection_timeout": 5}
         )
         cursor = cnx.cursor()
         cursor.execute("SELECT 1")
@@ -459,22 +418,18 @@ def health_check():
     status["timestamp"] = datetime.datetime.utcnow().isoformat()
     return jsonify(status), status_code
 
-
 def run_flask_app():
     """Run the Flask app in a separate thread."""
-    port = int(os.environ.get("PORT", "5100"))  # Default to 5100 if not set
+    port = int(os.environ.get("PORT", "5100"))
     print(f"Starting Flask server on port {port}")
     app.run(host="0.0.0.0", port=port, debug=True, use_reloader=False)
-
 
 if __name__ == "__main__":
     print("Starting billings service...")
     print(f"Environment PORT: {os.environ.get('PORT')}")
-
     # Start Flask in a separate thread
     flask_thread = Thread(target=run_flask_app, daemon=True)
     flask_thread.start()
-
     # Start the consumer in the main thread
     print("Starting RabbitMQ consumer...")
     consume()
