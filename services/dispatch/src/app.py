@@ -567,22 +567,22 @@ def create_app(db_uri: Optional[str] = None) -> Flask:
             seed_hospitals = [
                 Hospital(
                     id="hosp-1",
-                    name="Central Hospital",
-                    lat=51.5074,
-                    lng=-0.1278,
-                    capacity=5),
+                    name="Singapore General Hospital",
+                    lat=1.2789,
+                    lng=103.8358,
+                    capacity=10),
                 Hospital(
                     id="hosp-2",
-                    name="Westside Medical",
-                    lat=51.5155,
-                    lng=-0.1420,
-                    capacity=2),
+                    name="Raffles Hospital",
+                    lat=1.2998,
+                    lng=103.8484,
+                    capacity=8),
                 Hospital(
                     id="hosp-3",
-                    name="Riverside Clinic",
-                    lat=51.5033,
-                    lng=-0.1196,
-                    capacity=10),
+                    name="Mount Elizabeth Hospital",
+                    lat=1.3054,
+                    lng=103.8354,
+                    capacity=12),
             ]
             db.session.add_all(seed_hospitals)
             db.session.commit()
