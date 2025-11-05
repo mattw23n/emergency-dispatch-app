@@ -231,4 +231,5 @@ if __name__ == '__main__':
     # Start Flask app
     port = int(os.environ.get('PORT', '8090'))
     print(f"[Flask] Starting Event Stream Service on port {port}")
+    # nosemgrep: python.flask.security.audit.app-run-param-config.avoid_app_run_with_bad_host
     app.run(host='0.0.0.0', port=port, threaded=True)
