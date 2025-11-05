@@ -90,8 +90,8 @@ update_gitops_manifest:
     - git clone "https://${DEPLOY_TOKEN_USERNAME}:${DEPLOY_TOKEN_PASSWORD}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git" gitops-repo
     - cd gitops-repo
     - git checkout main
-    - yq e ".spec.template.spec.containers[0].image = \"$IMAGE_NAME\"" -i "k8s/wearable.yaml"
-    - git add k8s/wearable.yaml
+    - yq e ".spec.template.spec.containers[0].image = \"$IMAGE_NAME\"" -i "wearable.yaml"
+    - git add wearable.yaml
     - git diff --cached --exit-code || (git commit -m "Update wearable image to $IMAGE_NAME [skip ci]" && git push origin main)
   rules:
     - if: '$CI_COMMIT_BRANCH == "main"'
