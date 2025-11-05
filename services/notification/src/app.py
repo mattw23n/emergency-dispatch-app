@@ -1,4 +1,3 @@
-import json
 import threading
 import pika
 import time
@@ -10,6 +9,7 @@ import uvicorn
 
 # --- FastAPI Setup ---
 app = FastAPI(title="Notification Service")
+
 
 class Notification(BaseModel):
     patient_id: str
@@ -43,10 +43,16 @@ def setup_rabbitmq():
     """Declare exchange, queue, and binding."""
     connection = connect_to_rabbitmq()
     channel = connection.channel()
-    channel.exchange_declare(exchange=exchange_name, exchange_type=exchange_type, durable=True)
+    channel.exchange_declare(
+        exchange=exchange_name, exchange_type=exchange_type, durable=True
+    )
     channel.queue_declare(queue=queue_name, durable=True)
-    channel.queue_bind(exchange=exchange_name, queue=queue_name, routing_key=binding_key)
-    print(f"Exchange '{exchange_name}', queue '{queue_name}', and binding '{binding_key}' set up.")
+    channel.queue_bind(
+        exchange=exchange_name, queue=queue_name, routing_key=binding_key
+    )
+    print(
+        f"Exchange '{exchange_name}', queue '{queue_name}', and binding '{binding_key}' set up."
+    )
     return connection, channel
 
 
@@ -82,7 +88,9 @@ def consume_notifications():
     connection = connect_to_rabbitmq()
     channel = connection.channel()
     channel.queue_declare(queue=queue_name, durable=True)
-    channel.queue_bind(exchange=exchange_name, queue=queue_name, routing_key=binding_key)
+    channel.queue_bind(
+        exchange=exchange_name, queue=queue_name, routing_key=binding_key
+    )
 
     def callback(ch, method, properties, body):
         print(f"[x] Received message from {method.routing_key}: {body.decode()}")
@@ -104,16 +112,15 @@ def notify(req: Notification):
     try:
         msg_id = send_notification(req.patient_id, req.subject, req.message)
         # publish_billing_complete(req.patient_id, req.subject, req.message)
-        return {
-            "status": "sent",
-            "message_id": msg_id,
-            "patient_id": req.patient_id
-        }
+        return {"status": "sent", "message_id": msg_id, "patient_id": req.patient_id}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error sending notification: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Error sending notification: {str(e)}"
+        )
 
 
 # --- Entry Point ---
+# Hello
 def main():
     """Start the FastAPI app and background RabbitMQ consumer."""
     print("🚀 Starting Notification microservice...")
