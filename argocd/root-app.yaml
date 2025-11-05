@@ -8,7 +8,7 @@ spec:
   source:
     repoURL: https://gitlab.com/cs302-2025/g2-team5/argocd.git
     targetRevision: HEAD
-    path: argocd       
+    path: .       
   destination:
     server: https://kubernetes.default.svc
     namespace: argocd        
