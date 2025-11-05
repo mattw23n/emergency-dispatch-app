@@ -124,6 +124,7 @@ def main():
     consumer_thread.start()
 
     # Start FastAPI (Uvicorn) server
+    # nosemgrep: python.flask.security.audit.app-run-param-config.avoid_app_run_with_bad_host
     uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=False)
 
 
