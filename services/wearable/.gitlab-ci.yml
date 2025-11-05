@@ -88,7 +88,7 @@ update_gitops_manifest:
   script:
     - IMAGE_NAME="${CI_REGISTRY_IMAGE}/$CI_COMMIT_BRANCH:${CI_COMMIT_SHA}"
     - git clone "https://${DEPLOY_TOKEN_USERNAME}:${DEPLOY_TOKEN_PASSWORD}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git" gitops-repo
-    - echo "repo link: https://${DEPLOY_TOKEN_USERNAME}:***@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git"
+    - echo "repo link https://${DEPLOY_TOKEN_USERNAME}:***@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git"
     - cd gitops-repo
     - git checkout main
     - echo "repo contents:"
