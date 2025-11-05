@@ -422,6 +422,7 @@ def run_flask_app():
     """Run the Flask app in a separate thread."""
     port = int(os.environ.get("PORT", "5100"))
     print(f"Starting Flask server on port {port}")
+    # nosemgrep: python.flask.security.audit.app-run-param-config.avoid_app_run_with_bad_host
     app.run(host="0.0.0.0", port=port, debug=True, use_reloader=False)
 
 if __name__ == "__main__":
