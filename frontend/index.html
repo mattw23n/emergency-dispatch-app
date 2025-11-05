@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CS302 Emergency Services - Redirecting...</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+        .loader {
+            text-align: center;
+            color: white;
+        }
+        .spinner {
+            border: 4px solid rgba(255,255,255,0.3);
+            border-top: 4px solid white;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        h1 {
+            font-size: 24px;
+            margin-bottom: 10px;
+        }
+        p {
+            font-size: 14px;
+            opacity: 0.9;
+        }
+    </style>
+    <script>
+        // Redirect to dashboard after 1 second
+        setTimeout(() => {
+            window.location.href = 'dashboard.html';
+        }, 1000);
+    </script>
+</head>
+<body>
+    <div class="loader">
+        <div class="spinner"></div>
+        <h1>🚑 Emergency Services Dashboard</h1>
+        <p>Redirecting to event orchestration visualization...</p>
+    </div>
+</body>
+</html>
