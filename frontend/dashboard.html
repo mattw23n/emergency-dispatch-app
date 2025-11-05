@@ -591,12 +591,6 @@
                     <button class="btn btn-warning" onclick="triggerTriageAbnormal()">
                         ⚠️ Trigger Abnormal Vitals (Real AMQP)
                     </button>
-                    <button class="btn btn-info" onclick="triggerDispatchRequest()">
-                        🚑 Request Ambulance (Requires AMQP)
-                    </button>
-                    <button class="btn btn-primary" onclick="simulateFullWorkflow()">
-                        🎬 Full Emergency Workflow (Real AMQP)
-                    </button>
                     <button class="btn btn-danger" onclick="resetToNormalMode()">
                         🔄 Reset Wearable to Normal Mode
                     </button>
@@ -1084,7 +1078,7 @@
 
                 if (response.ok) {
                     const result = await response.json();
-                    addEvent('triage', '� Wearable in EMERGENCY Mode', 
+                    addEvent('triage', '🚨 Wearable in EMERGENCY Mode', 
                         `Wearable will now publish emergency vitals to RabbitMQ → Triage will detect and trigger dispatch`);
                     showToast('✅ Emergency scenario activated! Watch for real events in the next 10 seconds.', 'success');
                 } else {
