@@ -18,6 +18,7 @@
 
 stages:
   - Static Analysis
+  - Security Testing
   - Test
   - Release
 
@@ -49,6 +50,24 @@ pylint:
     paths:
       - pylint_report.txt
 
+semgrep:
+  stage: Security Testing
+  image: returntocorp/semgrep
+  script: ["semgrep ci --config p/owasp-top-ten"]
+
+trivy:
+  stage: Security Testing
+  image:
+    name: aquasec/trivy:latest
+    entrypoint: [""]     # override entrypoint so we call trivy directly
+  script: ["trivy fs --severity CRITICAL,HIGH ."]
+
+gitleaks:
+  stage: Security Testing
+  image:
+    name: zricethezav/gitleaks:latest
+    entrypoint: [""]  # override entrypoint so we call gitleaks directly
+  script: ["gitleaks detect --source . --no-git -v"]
 
 integration-tests:
   stage: Test

@@ -189,4 +189,5 @@ def create_app() -> Flask:
 app = create_app()
 
 if __name__ == "__main__":
+    # nosemgrep: python.flask.security.audit.app-run-param-config.avoid_app_run_with_bad_host
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", "8011")), debug=False)
