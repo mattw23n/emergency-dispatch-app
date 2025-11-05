@@ -4,8 +4,9 @@ metadata:
   name: wearable
   namespace: argocd
   annotations:
-    argocd-image-updater.argoproj.io/wearable.image-list: registry.gitlab.com/cs302-2025/g2-team5/services/wearable/main:latest
+    argocd-image-updater.argoproj.io/image-list: wearable=registry.gitlab.com/cs302-2025/g2-team5/services/wearable/main:latest
     argocd-image-updater.argoproj.io/wearable.update-strategy: digest
+    argocd-image-updater.argoproj.io/write-back-method: git:secret:argocd/gitlab-writeback-token
 spec:
   project: default
   source:
