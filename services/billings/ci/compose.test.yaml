@@ -1,13 +1,3 @@
-services:
-  ####################################
-  # mysql database  
-  ####################################
-  mysql:
-    image: mysql
-    environment:
-      MYSQL_ROOT_PASSWORD: root
-      MYSQL_DATABASE: billing
-
   ##################################
   # Pytest on Billings Service
   ##################################
