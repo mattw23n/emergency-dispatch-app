@@ -180,7 +180,7 @@ def stream_events():
     Server-Sent Events (SSE) endpoint that streams RabbitMQ events to the browser.
     The browser opens a persistent connection and receives events in real-time.
     """
-    def event_stream():
+    def events_stream():
         """Generator that yields SSE formatted messages."""
         print("[SSE] Client connected to event stream")
         
@@ -210,7 +210,7 @@ def stream_events():
             print(f"[SSE] Client disconnected (sent {events_sent} events)")
     
     return Response(
-        event_stream(),
+        events_stream(),
         mimetype='text/event-stream',
         headers={
             'Cache-Control': 'no-cache',
