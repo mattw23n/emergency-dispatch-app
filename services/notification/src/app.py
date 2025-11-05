@@ -1,6 +1,7 @@
 import threading
 import pika
 import time
+import json
 from os import environ
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
@@ -84,7 +85,7 @@ def setup_rabbitmq():
 
 # --- Consumer ---
 def consume_notifications():
-    """Consume messages from *.notify.# and process them."""
+    """Consume messages from *.notification.# and process them."""
     connection = connect_to_rabbitmq()
     channel = connection.channel()
     channel.queue_declare(queue=queue_name, durable=True)
@@ -94,6 +95,70 @@ def consume_notifications():
 
     def callback(ch, method, properties, body):
         print(f"[x] Received message from {method.routing_key}: {body.decode()}")
+
+        try:
+            data = json.loads(body.decode())
+
+            msg_type = data.get("type")
+            template = data.get("template")
+            vars = data.get("vars", {})
+
+            patient_id = vars.get("patient_id", "UNKNOWN")
+
+            # Compose subject & message depending on template
+            if template == "TRIAGE_EMERGENCY":
+                subject = "🚨 Emergency Alert"
+                message = (
+                    f"Patient {patient_id} is in EMERGENCY!\n"
+                    f"HR: {vars['metrics']['heartRateBpm']} bpm, "
+                    f"SpO2: {vars['metrics']['spO2Percentage']}%, "
+                    f"Temp: {vars['metrics']['bodyTemperatureCelsius']}°C"
+                )
+
+            elif template == "DISPATCH_UNIT_ASSIGNED":
+                subject = "🚑 Ambulance Unit Assigned"
+                message = (
+                    f"Unit {vars['unit_id']} has been assigned to patient {patient_id}.\n"
+                    f"ETA: {vars['eta_minutes']} minutes to hospital {vars['dest_hospital_id']}."
+                )
+
+            elif template == "DISPATCH_ENROUTE":
+                subject = "🚑 En Route to Patient"
+                message = (
+                    f"Ambulance {vars['unit_id']} is en route to patient {patient_id}.\n"
+                    f"ETA: {vars['eta_minutes']} minutes."
+                )
+
+            elif template == "DISPATCH_PATIENT_ONBOARD":
+                subject = "🏥 Patient Onboard"
+                message = (
+                    f"Patient {patient_id} is onboard ambulance {vars['unit_id']}."
+                )
+
+            elif template == "DISPATCH_ARRIVED_AT_HOSPITAL":
+                subject = "✅ Arrived at Hospital"
+                message = (
+                    f"Ambulance {vars['unit_id']} has arrived at hospital {vars['dest_hospital_id']} "
+                    f"with patient {patient_id}."
+                )
+
+            elif template == "BILLING_COMPLETED":
+                subject = "💰 Billing Completed"
+                message = (
+                    f"Billing completed for patient {patient_id}.\n"
+                    f"Amount: ${vars['amount']} | Status: {vars['status']}"
+                )
+
+            else:
+                subject = f"Notification: {template or msg_type}"
+                message = json.dumps(vars, indent=2)
+
+            # Send notification via SNS
+            msg_id = send_notification(patient_id, subject, message)
+            print(f"✅ Notification sent (MessageId: {msg_id})")
+
+        except Exception as e:
+            print(f"❌ Error processing message: {e}")
 
     channel.basic_consume(queue=queue_name, on_message_callback=callback, auto_ack=True)
     print(f"[*] Waiting for messages on {queue_name}. To exit press CTRL+C.")
