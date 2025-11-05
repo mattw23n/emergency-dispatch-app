@@ -83,7 +83,7 @@ class WearablePublisher:
         return {
             "patient_id": "P123",
             "device": {"id": "wearable-1", "model": "HealthTracker v1"},
-            "location": {"lat": 1.290270, "lng": 103.851959},
+            "location": {"lat": 1.2974, "lng": 103.8493},
             "schemaVersion": "1.0",
         }
 
