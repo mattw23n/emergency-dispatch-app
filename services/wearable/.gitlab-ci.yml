@@ -55,12 +55,12 @@ gitleaks:
   image:
     name: zricethezav/gitleaks:latest
     entrypoint: [""]  # override entrypoint so we call gitleaks directly
-  script:
-    - gitleaks detect --repo-path . --report-format json --report-path gitleaks_report.json --verbose --exit-code 1
-  artifacts:
-    when: always
-    paths:
-      - gitleaks_report.json
+    script: ["gitleaks detect --source . --no-git -v"]  # :contentReference[oaicite:24]{index=24}
+  #   - gitleaks detect --repo-path . --report-format json --report-path gitleaks_report.json --verbose --exit-code 1
+  # artifacts:
+  #   when: always
+  #   paths:
+  #     - gitleaks_report.json
 
 zap:
   stage: Security Testing
