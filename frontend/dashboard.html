@@ -692,10 +692,10 @@
                 y: 350
             },
             { 
-                id: 'event-stream', 
-                name: 'Event Stream', 
+                id: 'events-stream', 
+                name: 'Events Stream', 
                 port: '8090', 
-                endpoint: `${API_BASE}/event-stream/health`,
+                endpoint: `${API_BASE}/events-stream/health`,
                 x: 450, 
                 y: 350,
                 description: 'SSE Streaming'
@@ -710,7 +710,7 @@
             { from: 'rabbitmq', to: 'dispatch' },
             { from: 'rabbitmq', to: 'notification' },
             { from: 'rabbitmq', to: 'billings' },
-            { from: 'rabbitmq', to: 'event-stream' },
+            { from: 'rabbitmq', to: 'events-stream' },
             
             // Event flow connections
             { from: 'wearable', to: 'triage' },
