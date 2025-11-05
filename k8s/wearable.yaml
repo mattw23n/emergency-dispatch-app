@@ -20,7 +20,7 @@ metadata:
   annotations:
     argocd-image-updater.argoproj.io/wearable.image-list: registry.gitlab.com/cs302-2025/g2-team5/services/wearable/main
     argocd-image-updater.argoproj.io/wearable.update-strategy: latest
-    argocd-image-updater.argoproj.io/write-back-target: git
+    argocd-image-updater.argoproj.io/write-back-method: git:secret:argocd/gitlab-writeback-token
 spec:
   replicas: 2
   selector:
@@ -33,7 +33,7 @@ spec:
     spec:
       containers:
       - name: wearable
-        image: registry.gitlab.com/cs302-2025/g2-team5/services/wearable/main:348a673ea5960c908786d976a9b1848291192e9f
+        image: registry.gitlab.com/cs302-2025/g2-team5/services/wearable/main:21550ee526d2e7cbb4c8713c02756f5619edd1ef
         imagePullPolicy: Always
         ports:
         - containerPort: 5000
