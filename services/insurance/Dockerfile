@@ -1,6 +1,16 @@
-FROM python:3.13-slim
+FROM node:18-alpine
+
 WORKDIR /usr/src/app
-COPY requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt
-COPY src/ ./
-CMD ["python", "./app.py"]
+
+# Install dependencies
+COPY package*.json ./
+RUN npm install --production
+
+# Copy source code
+COPY src/ ./src/
+
+# Expose the port the app runs on
+EXPOSE 5200
+
+# Start the application
+CMD ["node", "src/app.js"]
