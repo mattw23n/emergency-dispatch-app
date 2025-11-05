@@ -48,10 +48,7 @@ def process_stripe_payment(
             metadata={"test_transaction": "true", "description": description},
         )
 
-        print(
-            f"[STRIPE] Payment processed successfully. PaymentIntent: {
-                intent.id}"
-        )
+        print(f"[STRIPE] Payment processed successfully. PaymentIntent: {intent.id}")
 
         return {
             "success": True,
