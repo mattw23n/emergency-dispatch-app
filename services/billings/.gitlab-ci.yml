@@ -42,12 +42,13 @@ release-image:
     - docker build --pull -t "$CI_REGISTRY_IMAGE/$CI_COMMIT_BRANCH:$CI_COMMIT_SHA" .
     - docker push "$CI_REGISTRY_IMAGE/$CI_COMMIT_BRANCH:$CI_COMMIT_SHA"
 
-deploy-ecs:
-  stage: Deploy
-  image: 'registry.gitlab.com/gitlab-org/cloud-deploy/aws-ecs:latest'
-  environment:
-    name: production-ecs
-  rules:
-    - if: '$CI_COMMIT_REF_NAME == "main"'
-  script:
-    - ecs update-task-definition
+
+# deploy-ecs:
+#   stage: Deploy
+#   image: 'registry.gitlab.com/gitlab-org/cloud-deploy/aws-ecs:latest'
+#   environment:
+#     name: production-ecs
+#   rules:
+#     - if: '$CI_COMMIT_REF_NAME == "main"'
+#   script:
+#     - ecs update-task-definition

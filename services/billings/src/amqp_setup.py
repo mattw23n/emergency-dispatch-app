@@ -21,11 +21,7 @@ class AMQPSetup:
         self.failed_routing_key = "event.billing.failed"
 
     def connect(self):
-        print(
-            f"Attempting to connect to RabbitMQ at {
-                self.hostname}:{
-                self.port}"
-        )
+        print(f"Attempting to connect to RabbitMQ at {self.hostname}:{self.port}")
         parameters = pika.ConnectionParameters(
             host=self.hostname,
             port=self.port,
@@ -73,27 +69,27 @@ class AMQPSetup:
 
         # Set up bindings
         print(f"Binding queue {self.queue_name} to exchange {self.exchange_name}")
-        
+
         # Bind the Billings queue to listen for initiate commands
         self.channel.queue_bind(
             exchange=self.exchange_name,
             queue=self.queue_name,
             routing_key=self.initiate_routing_key,
         )
-        
+
         # Declare and bind the status queue for publishing status updates
         self.channel.queue_declare(queue=self.status_queue_name, durable=True)
         self.channel.queue_bind(
             exchange=self.exchange_name,
             queue=self.status_queue_name,
-            routing_key=self.completed_routing_key
+            routing_key=self.completed_routing_key,
         )
         self.channel.queue_bind(
             exchange=self.exchange_name,
             queue=self.status_queue_name,
-            routing_key=self.failed_routing_key
+            routing_key=self.failed_routing_key,
         )
-        
+
         print("Queue bindings completed successfully!")
 
     def publish_status_update(self, message, is_success=True):
@@ -103,11 +99,13 @@ class AMQPSetup:
             message: The message to send (will be converted to JSON if not already a string)
             is_success: Boolean indicating if the billing was successful or failed
         """
-        routing_key = self.completed_routing_key if is_success else self.failed_routing_key
+        routing_key = (
+            self.completed_routing_key if is_success else self.failed_routing_key
+        )
         try:
             if not self.channel or not self.channel.is_open:
                 self.connect()
-                
+
             # Convert message to JSON if it's a dictionary
             if isinstance(message, dict):
                 message = json.dumps(message)
@@ -119,7 +117,7 @@ class AMQPSetup:
                 properties=pika.BasicProperties(
                     delivery_mode=2,  # Make message persistent
                     content_type="application/json",
-                    timestamp=int(time.time())
+                    timestamp=int(time.time()),
                 ),
             )
             print(f"[NOTIFICATION] Published to {routing_key}: {message}")
