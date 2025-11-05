@@ -110,7 +110,7 @@ def callback(ch, method, properties, body):
 
                 # Publish payment completion event
                 status_msg = {
-                    "id": id,
+                    "billing_id": id,
                     "incident_id": incident_id,
                     "patient_id": patient_id,
                     "amount": amount,
@@ -128,7 +128,7 @@ def callback(ch, method, properties, body):
                 # Publish payment failure event
                 try:
                     status_msg = {
-                        "id": id,
+                        "billing_id": id,
                         "incident_id": incident_id,
                         "patient_id": patient_id,
                         "amount": amount,
@@ -147,7 +147,7 @@ def callback(ch, method, properties, body):
             )
             try:
                 status_msg = {
-                    "id": id,
+                    "billing_id": id,
                     "incident_id": incident_id,
                     "patient_id": patient_id,
                     "amount": amount,
