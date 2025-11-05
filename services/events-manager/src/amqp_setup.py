@@ -203,11 +203,13 @@ class AMQPSetup:
 
     def publish_dispatch_status_alert(self, routing_key: str, payload: dict) -> None:
         incident_id = payload["incident_id"]
+        patient_id = payload["patient_id"]
         template = self._TEMPLATE_BY_RK.get(routing_key)
         if not template:
             return
         vars_obj = {
             "unit_id": payload.get("unit_id"),
+            "patient_id": patient_id,
             "status": payload.get("status"),
             "eta_minutes": payload.get("eta_minutes"),
             "location": payload.get("location"),
@@ -268,9 +270,7 @@ class AMQPSetup:
             "billing_id": payload.get("billing_id"),
             "status": payload.get("status"),
             "amount": payload.get("amount"),
-            "currency": payload.get("currency"),
-            "ts": payload.get("ts"),
-            "reason": payload.get("reason"),
+            "patient_id": payload.get("patient_id"),
         }
         vars_obj = {k: v for k, v in vars_obj.items() if v is not None}
         self.publish(
