@@ -87,7 +87,7 @@ update_gitops_manifest:
     - git config --global user.name "GitLab CI Bot"
   script:
     - IMAGE_NAME="${CI_REGISTRY_IMAGE}/$CI_COMMIT_BRANCH:${CI_COMMIT_SHA}"
-    - git clone "https://${DEPLOY_TOKEN_USERNAME}:${DEPLOY_TOKEN_PASSWORD}@https://gitlab.com/cs302-2025/g2-team5/k8s.git" gitops-repo
+    - git clone "https://${DEPLOY_TOKEN_USERNAME}:${DEPLOY_TOKEN_PASSWORD}@gitlab.com/cs302-2025/g2-team5/k8s.git" gitops-repo
     - cd gitops-repo
     - git checkout main
     - echo "repo contents:"
