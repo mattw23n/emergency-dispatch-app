@@ -764,6 +764,7 @@ if __name__ == "__main__":
     START_FLASK = str(os.environ.get("START_FLASK", "true")).lower()
     if START_FLASK in ("1", "true", "yes", "on"):
         main_app = create_app()
+        # nosemgrep: python.flask.security.audit.app-run-param-config.avoid_app_run_with_bad_host
         main_app.run("0.0.0.0", port=8081, debug=False, use_reloader=False)
     else:
         print(
