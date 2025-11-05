@@ -1,5 +1,15 @@
+services:
+  ####################################
+  # mysql database  
+  ####################################
+  mysql:
+    image: mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: billings
+
   ##################################
-  # Pytest on Billings Service
+  # Pytest on Games Service
   ##################################
   billings-pytest:
     build:
@@ -9,4 +19,4 @@
       - mysql
     environment:
       db_conn: mysql+mysqlconnector://root:root@mysql:3306
-
+      insurance_service_url_internal: http://mock-insurance:5000

@@ -1,16 +1,15 @@
 import json
-import os
 import pytest
 import mysql.connector
 import requests
 
 # Test configuration
 TEST_DB_CONFIG = {
-    "host": "localhost",
+    "host": "mysql",
     "port": 3306,
     "user": "cs302",
     "password": "",
-    "database": "test_cs302DB",
+    "database": "billings",
 }
 
 

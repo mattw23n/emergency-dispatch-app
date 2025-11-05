@@ -44,7 +44,7 @@ INSURANCE_API_URL = (
 )
 
 
-def callback(body):
+def callback(ch, method, properties, body):
     """Process billing initiation message."""
     cnx = None
     cursor = None
@@ -367,7 +367,7 @@ def verify_insurance(incident_id, patient_id, amount=None):
         }
 
 
-def process_payment(amount, description):
+def process_payment(patient_id, amount, description):
     """Process payment using Stripe."""
     from stripe_service import process_stripe_payment
 

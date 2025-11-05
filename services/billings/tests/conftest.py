@@ -1,4 +1,27 @@
 import pytest
+import sys
+import importlib
+import os
+
+# ensure the src folder is in sys.path
+sys.path.insert(0, os.path.abspath("src"))
+
+from src.app import db      # if you need app.py
+import amqp_setup   # your amqp_setup.py
+
+@pytest.fixture
+def em_module():
+    # ensure env is set BEFORE import
+    if "amqp_setup" in sys.modules:
+        del sys.modules["amqp_setup"]
+    import amqp_setup  # noqa
+
+    return importlib.reload(sys.modules["amqp_setup"])
+
+
+@pytest.fixture
+def em(em_module):
+    return em_module.AMQPSetup()
 
 
 @pytest.fixture
