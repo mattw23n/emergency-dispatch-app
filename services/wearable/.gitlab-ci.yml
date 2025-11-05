@@ -42,13 +42,10 @@ semgrep:
 
 trivy:
   stage: Security Testing
-  image: aquasec/trivy:latest
+  image:
+    name: aquasec/trivy:latest
+    entrypoint: [""]     # override entrypoint so we call trivy directly
   script: ["trivy fs --severity CRITICAL,HIGH ."]  # :contentReference[oaicite:23]{index=23}
-
-# gitleaks:
-#   stage: Security Testing
-#   image: zricethezav/gitleaks:latest
-#   script: ["gitleaks detect --source . --no-git -v"]  # :contentReference[oaicite:24]{index=24}
 
 gitleaks:
   stage: Security Testing
@@ -64,7 +61,7 @@ gitleaks:
 
 zap:
   stage: Security Testing
-  image: owasp/zap2docker-stable
+  image: zaproxy/zap-stable:latest
   script: ["zap-baseline.py -t https://staging.example.com -r zap.html"]  # :contentReference[oaicite:26]{index=26}
   artifacts: { paths: [zap.html] }
 
