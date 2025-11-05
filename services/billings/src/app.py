@@ -248,6 +248,8 @@ def verify_insurance(incident_id, patient_id, amount=None):
         url = INSURANCE_API_URL
 
         try:
+            # HTTP is safe here - internal Docker network communication only
+            # nosemgrep: python.lang.security.audit.insecure-transport.requests.request-with-http.request-with-http
             r = requests.post(
                 url,
                 json={
@@ -423,7 +425,7 @@ def run_flask_app():
     port = int(os.environ.get("PORT", "5100"))
     print(f"Starting Flask server on port {port}")
     # nosemgrep: python.flask.security.audit.app-run-param-config.avoid_app_run_with_bad_host
-    app.run(host="0.0.0.0", port=port, debug=True, use_reloader=False)
+    app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
 
 if __name__ == "__main__":
     print("Starting billings service...")
