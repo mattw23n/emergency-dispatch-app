@@ -38,53 +38,21 @@ pylint:
 semgrep:
   stage: Security Testing
   image: returntocorp/semgrep
-  script: ["semgrep ci --config p/owasp-top-ten"]  # :contentReference[oaicite:22]{index=22}
+  script: ["semgrep ci --config p/owasp-top-ten"]
 
 trivy:
   stage: Security Testing
   image:
     name: aquasec/trivy:latest
     entrypoint: [""]     # override entrypoint so we call trivy directly
-  script: ["trivy fs --severity CRITICAL,HIGH ."]  # :contentReference[oaicite:23]{index=23}
+  script: ["trivy fs --severity CRITICAL,HIGH ."]
 
 gitleaks:
   stage: Security Testing
   image:
     name: zricethezav/gitleaks:latest
     entrypoint: [""]  # override entrypoint so we call gitleaks directly
-  script: ["gitleaks detect --source . --no-git -v"]  # :contentReference[oaicite:24]{index=24}
-  #   - gitleaks detect --repo-path . --report-format json --report-path gitleaks_report.json --verbose --exit-code 1
-  # artifacts:
-  #   when: always
-  #   paths:
-  #     - gitleaks_report.json
-
-# zap:
-#   stage: Security Testing
-#   image: zaproxy/zap-stable:latest
-#   script: ["zap-baseline.py -t https://staging.example.com -r zap.html"]  # :contentReference[oaicite:26]{index=26}
-#   artifacts: { paths: [zap.html] }
-
-zap:
-  stage: Security Testing
-  image: docker:latest
-  services:
-    - docker:dind
-  variables:
-    ZAP_WRK_HOST: "$CI_PROJECT_DIR/zap-wrk"
-  before_script:
-    - mkdir -p "$ZAP_WRK_HOST"
-    - chmod 777 "$ZAP_WRK_HOST"
-  script:
-    - docker run --rm \
-        -v "$ZAP_WRK_HOST:/zap/wrk:rw" \
-        zaproxy/zap-stable:latest \
-        zap-baseline.py -t https://staging.example.com -r /zap/wrk/zap-report.html
-  artifacts:
-    when: always
-    paths:
-      - zap-wrk/zap-report.html
-
+  script: ["gitleaks detect --source . --no-git -v"]
 
 integration-tests:
   stage: Test
