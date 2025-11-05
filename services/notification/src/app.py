@@ -23,7 +23,7 @@ port = int(environ.get("RABBITMQ_PORT") or 5672)
 exchange_name = "amqp.topic"
 exchange_type = "topic"
 queue_name = "Notification"
-binding_key = "*.notify.#"
+binding_key = "*.notification.#"
 
 
 def connect_to_rabbitmq():
@@ -50,30 +50,30 @@ def setup_rabbitmq():
     return connection, channel
 
 
-# --- Publisher ---
-def publish_billing_complete(patient_id: str, subject: str, message: str):
-    """Publish notification event to RabbitMQ topic."""
-    connection = connect_to_rabbitmq()
-    channel = connection.channel()
-    channel.exchange_declare(exchange=exchange_name, exchange_type=exchange_type, durable=True)
+# # --- Publisher ---
+# def publish_billing_complete(patient_id: str, subject: str, message: str):
+#     """Publish notification event to RabbitMQ topic."""
+#     connection = connect_to_rabbitmq()
+#     channel = connection.channel()
+#     channel.exchange_declare(exchange=exchange_name, exchange_type=exchange_type, durable=True)
 
-    body = json.dumps({
-        "patient_id": patient_id,
-        "subject": subject,
-        "message": message
-    })
+#     body = json.dumps({
+#         "patient_id": patient_id,
+#         "subject": subject,
+#         "message": message
+#     })
 
-    routing_key = "notification.billings.complete"
+#     routing_key = "notification.billings.complete"
 
-    channel.basic_publish(
-        exchange=exchange_name,
-        routing_key=routing_key,
-        body=body,
-        properties=pika.BasicProperties(delivery_mode=2)
-    )
+#     channel.basic_publish(
+#         exchange=exchange_name,
+#         routing_key=routing_key,
+#         body=body,
+#         properties=pika.BasicProperties(delivery_mode=2)
+#     )
 
-    print(f"[x] Published to '{routing_key}': {body}")
-    connection.close()
+#     print(f"[x] Published to '{routing_key}': {body}")
+#     connection.close()
 
 
 # --- Consumer ---
@@ -103,7 +103,7 @@ def notify(req: Notification):
     """Sends notification through SNS and publishes event to RabbitMQ."""
     try:
         msg_id = send_notification(req.patient_id, req.subject, req.message)
-        publish_billing_complete(req.patient_id, req.subject, req.message)
+        # publish_billing_complete(req.patient_id, req.subject, req.message)
         return {
             "status": "sent",
             "message_id": msg_id,
