@@ -59,11 +59,24 @@ gitleaks:
   #   paths:
   #     - gitleaks_report.json
 
+# zap:
+#   stage: Security Testing
+#   image: zaproxy/zap-stable:latest
+#   script: ["zap-baseline.py -t https://staging.example.com -r zap.html"]  # :contentReference[oaicite:26]{index=26}
+#   artifacts: { paths: [zap.html] }
+
 zap:
   stage: Security Testing
   image: zaproxy/zap-stable:latest
-  script: ["zap-baseline.py -t https://staging.example.com -r zap.html"]  # :contentReference[oaicite:26]{index=26}
-  artifacts: { paths: [zap.html] }
+  before_script:
+    - mkdir -p zap-wrk
+  script:
+    - zap-baseline.py -t https://staging.example.com -r zap-wrk/zap.html  # :contentReference[oaicite:26]{index=26}
+  artifacts:
+    when: always
+    paths:
+      - zap-wrk/zap.html
+
 
 integration-tests:
   stage: Test
