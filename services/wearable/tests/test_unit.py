@@ -179,10 +179,10 @@ class TestWearablePublisher:
         publisher = WearablePublisher("normal")
         metrics = publisher._generate_normal_metrics()
 
-        assert 60 <= metrics["heartRateBpm"] <= 95
-        assert 96.0 <= metrics["spO2Percentage"] <= 99.5
-        assert 12 <= metrics["respirationRateBpm"] <= 20
-        assert 36.5 <= metrics["bodyTemperatureCelsius"] <= 37.5
+        assert 50 <= metrics["heartRateBpm"] <= 100
+        assert 95.0 <= metrics["spO2Percentage"] <= 99.5
+        assert 10 <= metrics["respirationRateBpm"] <= 24
+        assert 36.0 <= metrics["bodyTemperatureCelsius"] <= 37.5
         assert 0 <= metrics["stepsSinceLastReading"] <= 30
 
     def test_generate_abnormal_metrics(self):
@@ -190,10 +190,16 @@ class TestWearablePublisher:
         publisher = WearablePublisher("abnormal")
         metrics = publisher._generate_abnormal_metrics()
 
-        assert 105 <= metrics["heartRateBpm"] <= 125
-        assert 92.0 <= metrics["spO2Percentage"] <= 94.5
-        assert 20 <= metrics["respirationRateBpm"] <= 25
-        assert 37.6 <= metrics["bodyTemperatureCelsius"] <= 38.2
+        assert (101 <= metrics["heartRateBpm"] <= 150) or (
+            40 <= metrics["heartRateBpm"] <= 49
+        )
+        assert 91.0 <= metrics["spO2Percentage"] <= 94.9
+        assert (25 <= metrics["respirationRateBpm"] <= 30) or (
+            8 <= metrics["respirationRateBpm"] <= 9
+        )
+        assert (37.6 <= metrics["bodyTemperatureCelsius"] <= 39.0) or (
+            35.1 <= metrics["bodyTemperatureCelsius"] <= 35.9
+        )
         assert 0 <= metrics["stepsSinceLastReading"] <= 10
 
     def test_generate_emergency_metrics(self):
@@ -201,10 +207,16 @@ class TestWearablePublisher:
         publisher = WearablePublisher("emergency")
         metrics = publisher._generate_emergency_metrics()
 
-        assert 140 <= metrics["heartRateBpm"] <= 190
-        assert 85.0 <= metrics["spO2Percentage"] <= 92.5
-        assert 22 <= metrics["respirationRateBpm"] <= 30
-        assert 36.0 <= metrics["bodyTemperatureCelsius"] <= 37.0
+        assert (151 <= metrics["heartRateBpm"] <= 190) or (
+            20 <= metrics["heartRateBpm"] <= 39
+        )
+        assert 80.0 <= metrics["spO2Percentage"] <= 90.9
+        assert (31 <= metrics["respirationRateBpm"] <= 40) or (
+            4 <= metrics["respirationRateBpm"] <= 7
+        )
+        assert (39.1 <= metrics["bodyTemperatureCelsius"] <= 42.0) or (
+            32.0 <= metrics["bodyTemperatureCelsius"] <= 34.9
+        )
         assert metrics["stepsSinceLastReading"] == 0
 
     def test_generate_base_payload(self):

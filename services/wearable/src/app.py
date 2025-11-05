@@ -89,30 +89,46 @@ class WearablePublisher:
 
     def _generate_normal_metrics(self):
         return {
-            "heartRateBpm": random.randint(60, 95),
-            "spO2Percentage": round(random.uniform(96.0, 99.5), 2),
-            "respirationRateBpm": random.randint(12, 20),
-            "bodyTemperatureCelsius": round(random.uniform(36.5, 37.5), 2),
+            "heartRateBpm": random.randint(50, 100),
+            "spO2Percentage": round(random.uniform(95.0, 99.5), 2),
+            "respirationRateBpm": random.randint(10, 24),
+            "bodyTemperatureCelsius": round(random.uniform(36.0, 37.5), 2),
             "stepsSinceLastReading": random.randint(0, 30),
         }
 
     def _generate_abnormal_metrics(self):
         return {
-            "heartRateBpm": random.randint(105, 125),  # Abnormal range: 105-125
-            "spO2Percentage": round(
-                random.uniform(92.0, 94.5), 2
-            ),  # Abnormal range: 92-94.5
-            "respirationRateBpm": random.randint(20, 25),
-            "bodyTemperatureCelsius": round(random.uniform(37.6, 38.2), 2),
+            "heartRateBpm": random.choice(
+                [random.randint(101, 150), random.randint(40, 49)]
+            ),
+            "spO2Percentage": round(random.uniform(91.0, 94.9), 2),
+            "respirationRateBpm": random.choice(
+                [random.randint(25, 30), random.randint(8, 9)]
+            ),
+            "bodyTemperatureCelsius": random.choice(
+                [
+                    round(random.uniform(37.6, 39.0), 2),
+                    round(random.uniform(35.1, 35.9), 2),
+                ]
+            ),
             "stepsSinceLastReading": random.randint(0, 10),
         }
 
     def _generate_emergency_metrics(self):
         return {
-            "heartRateBpm": random.randint(140, 190),
-            "spO2Percentage": round(random.uniform(85.0, 92.5), 2),
-            "respirationRateBpm": random.randint(22, 30),
-            "bodyTemperatureCelsius": round(random.uniform(36.0, 37.0), 2),
+            "heartRateBpm": random.choice(
+                [random.randint(151, 190), random.randint(20, 39)]
+            ),
+            "spO2Percentage": round(random.uniform(80.0, 90.9), 2),
+            "respirationRateBpm": random.choice(
+                [random.randint(31, 40), random.randint(4, 7)]
+            ),
+            "bodyTemperatureCelsius": random.choice(
+                [
+                    round(random.uniform(39.1, 42.0), 2),
+                    round(random.uniform(32.0, 34.9), 2),
+                ]
+            ),
             "stepsSinceLastReading": 0,
         }
 

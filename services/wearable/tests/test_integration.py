@@ -69,7 +69,7 @@ class TestWearableIntegration:
 
         # Test normal scenario metrics
         normal_metrics = publisher._generate_normal_metrics()
-        assert 60 <= normal_metrics["heartRateBpm"] <= 95
+        assert 50 <= normal_metrics["heartRateBpm"] <= 100
 
         # Switch to emergency via API
         response = client.put(
@@ -84,7 +84,9 @@ class TestWearableIntegration:
 
         # Test emergency scenario metrics
         emergency_metrics = publisher._generate_emergency_metrics()
-        assert 140 <= emergency_metrics["heartRateBpm"] <= 190
+        assert (151 <= emergency_metrics["heartRateBpm"] <= 190) or (
+            20 <= emergency_metrics["heartRateBpm"] <= 39
+        )
 
     @patch("src.app.amqp_setup")
     def test_message_publishing_with_different_scenarios(
@@ -114,14 +116,18 @@ class TestWearableIntegration:
             # Verify scenario-specific metrics ranges
             metrics = payload["metrics"]
             if scenario == "normal":
-                assert 60 <= metrics["heartRateBpm"] <= 95
-                assert 96.0 <= metrics["spO2Percentage"] <= 99.5
+                assert 50 <= metrics["heartRateBpm"] <= 100
+                assert 95.0 <= metrics["spO2Percentage"] <= 99.5
             elif scenario == "abnormal":
-                assert 105 <= metrics["heartRateBpm"] <= 125
-                assert 92.0 <= metrics["spO2Percentage"] <= 94.5
+                assert (101 <= metrics["heartRateBpm"] <= 150) or (
+                    40 <= metrics["heartRateBpm"] <= 49
+                )
+                assert 91.0 <= metrics["spO2Percentage"] <= 94.9
             else:  # emergency
-                assert 140 <= metrics["heartRateBpm"] <= 190
-                assert 85.0 <= metrics["spO2Percentage"] <= 92.5
+                assert (151 <= metrics["heartRateBpm"] <= 190) or (
+                    20 <= metrics["heartRateBpm"] <= 39
+                )
+                assert 80.0 <= metrics["spO2Percentage"] <= 90.9
 
     @patch("src.app.amqp_setup")
     def test_concurrent_publishing_thread_safety(self, mock_amqp):
