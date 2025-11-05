@@ -17,9 +17,6 @@ metadata:
   name: wearable
   labels:
     app: wearable
-  annotations:
-    argocd-image-updater.argoproj.io/wearable.image-list: registry.gitlab.com/cs302-2025/g2-team5/services/wearable/main:latest
-    argocd-image-updater.argoproj.io/wearable.update-strategy: digest
 spec:
   replicas: 2
   selector:
