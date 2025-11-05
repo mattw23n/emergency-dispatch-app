@@ -129,3 +129,97 @@ def test_verify_billing_flow(service_url):
     # If 200, expect verified boolean or details
     if resp.status_code == 200:
         assert "verified" in j or "details" in j
+
+
+@pytest.mark.dependency(depends=["test_update_bill_status"])
+def test_amqp_message_processing(service_url, db_connection):
+    """Test that AMQP messages are properly processed and create billing records."""
+    import pika
+    import json
+    import os
+    
+    # Get AMQP connection parameters from environment or use defaults
+    amqp_params = {
+        'host': os.getenv('RABBITMQ_HOST', 'localhost'),
+        'port': int(os.getenv('RABBITMQ_PORT', 5672)),
+        'virtual_host': os.getenv('RABBITMQ_VHOST', '/'),
+        'credentials': pika.PlainCredentials(
+            os.getenv('RABBITMQ_USER', 'guest'),
+            os.getenv('RABBITMQ_PASSWORD', 'guest')
+        )
+    }
+    
+    # Connect to RabbitMQ
+    connection = pika.BlockingConnection(pika.ConnectionParameters(**amqp_params))
+    channel = connection.channel()
+    
+    # Declare the exchange and queue
+    exchange_name = os.getenv('AMQP_EXCHANGE_NAME', 'amq.topic')
+    queue_name = 'test_billing_queue'
+    routing_key = 'cmd.billing.initiate'
+    
+    channel.exchange_declare(exchange=exchange_name, exchange_type='topic', durable=True)
+    channel.queue_declare(queue=queue_name, durable=True)
+    channel.queue_bind(queue=queue_name, exchange=exchange_name, routing_key=routing_key)
+    
+    try:
+        # Prepare test message
+        test_msg = {
+            'incident_id': 'INC-AMQP-TEST-001',
+            'patient_id': 'PAT-AMQP-TEST-001',
+            'amount': 999.99,
+            'description': 'Test AMQP message processing',
+            'timestamp': '2025-01-01T12:00:00Z'
+        }
+        
+        # Publish test message
+        channel.basic_publish(
+            exchange=exchange_name,
+            routing_key=routing_key,
+            body=json.dumps(test_msg),
+            properties=pika.BasicProperties(
+                content_type='application/json',
+                delivery_mode=2  # Make message persistent
+            )
+        )
+        
+        # Give the service some time to process the message
+        import time
+        time.sleep(2)
+        
+        # Verify the billing record was created in the database
+        cursor = db_connection.cursor(dictionary=True)
+        cursor.execute(
+            "SELECT * FROM billings WHERE incident_id = %s",
+            (test_msg['incident_id'],)
+        )
+        billing_record = cursor.fetchone()
+        cursor.close()
+        
+        assert billing_record is not None, "Billing record was not created from AMQP message"
+        
+        # Verify all required fields
+        assert billing_record['incident_id'] == test_msg['incident_id']
+        assert billing_record['patient_id'] == test_msg['patient_id']
+        assert float(billing_record['amount']) == pytest.approx(test_msg['amount'], rel=1e-3)
+        assert billing_record['status'] in ('PENDING', 'pending', 'UNPAID')
+        
+        # Verify default values
+        assert billing_record['insurance_verified'] == 0  # Should be False/0 by default
+        assert billing_record['payment_reference'] is None  # Should be None by default
+        
+        # Verify timestamps were set
+        assert billing_record['created_at'] is not None
+        assert billing_record['updated_at'] is not None
+        # Verify created_at and updated_at are the same for new records
+        assert billing_record['created_at'] == billing_record['updated_at']
+        
+    finally:
+        # Clean up test data
+        cursor = db_connection.cursor()
+        cursor.execute("DELETE FROM billings WHERE incident_id = %s", (test_msg['incident_id'],))
+        db_connection.commit()
+        cursor.close()
+        
+        # Close the connection
+        connection.close()

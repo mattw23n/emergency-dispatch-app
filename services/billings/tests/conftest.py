@@ -1,4 +1,4 @@
-edimport os
+import os
 import pytest
 import mysql.connector
 
