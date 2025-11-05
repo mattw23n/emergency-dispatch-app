@@ -5,7 +5,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Create a non-root user
-RUN useradd -r -u 1000 appuser && chown -R appuser /app
+RUN useradd -r appuser && chown -R appuser /app
 USER appuser
 
 EXPOSE 5001
