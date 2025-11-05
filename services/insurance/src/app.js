@@ -79,7 +79,6 @@ app.get("/test-db", async (req, res) => {
 
 // Health check endpoint
 app.get("/health", async (req, res) => {
-  const hostname = os.hostname();
   const networkInterfaces = os.networkInterfaces();
   const localIp = networkInterfaces.eth0?.[0]?.address || "127.0.0.1";
 
@@ -264,7 +263,7 @@ app.post("/insurance/verify", async (req, res) => {
 });
 
 // Error handling middleware
-app.use((err, req, res, next) => {
+app.use((err, req, res) => {
   console.error("Unhandled error:", err);
   res.status(500).json({
     error: "Internal server error",
