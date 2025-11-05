@@ -234,6 +234,7 @@ def main():
 
         # Start the Flask server in the main thread
         # Use host='0.0.0.0' to make it accessible from outside a container
+        # nosemgrep: python.flask.security.audit.app-run-param-config.avoid_app_run_with_bad_host
         app.run(host="0.0.0.0", port=int(os.environ.get("PORT", "5000")))
 
     except ValueError as e:
