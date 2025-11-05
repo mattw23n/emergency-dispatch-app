@@ -249,8 +249,7 @@ def verify_insurance(incident_id, patient_id, amount=None):
 
         try:
             # HTTP is safe here - internal Docker network communication only
-            # nosemgrep: python.lang.security.audit.insecure-transport.requests.request-with-http.request-with-http
-            r = requests.post(
+            r = requests.post( # nosemgrep: python.lang.security.audit.insecure-transport.requests.request-with-http.request-with-http
                 url,
                 json={
                     "patient_id": patient_id,
