@@ -74,10 +74,7 @@ zap:
     - mkdir -p zap-wrk
     - docker info
   script:
-    - docker run --rm \
-        -v "$CI_PROJECT_DIR/zap-wrk":/zap/wrk:rw \
-        zaproxy/zap-stable:latest \
-        zap-baseline.py -t https://staging.example.com -r /zap/wrk/zap.html
+    - docker run --rm -v "$CI_PROJECT_DIR/zap-wrk:/zap/wrk:rw" zaproxy/zap-stable:latest zap-baseline.py -t https://staging.example.com -r /zap/wrk/zap.html
   artifacts:
     when: always
     paths:
