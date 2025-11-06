@@ -3,7 +3,7 @@ stages:
   - Security Testing
   # - Test
   - Release
-  # - Deploy
+  - Deploy
 
 # eslint:
 #   stage: Static Analysis
@@ -63,12 +63,50 @@ release-image:
     - docker build --pull -t "$CI_REGISTRY_IMAGE/$CI_COMMIT_BRANCH:latest" -t "$CI_REGISTRY_IMAGE/$CI_COMMIT_BRANCH:$CI_COMMIT_SHA" .
     - docker push "$CI_REGISTRY_IMAGE/$CI_COMMIT_BRANCH" --all-tags
 
-# deploy-ecs:
-#   stage: Deploy
-#   image: 'registry.gitlab.com/gitlab-org/cloud-deploy/aws-ecs:latest'
-#   environment:
-#     name: production-ecs
-#   rules:
-#     - if: '$CI_COMMIT_REF_NAME == "main"'
-#   script:
-#     - ecs update-task-definition
+update_gitops_manifest:
+  stage: Deploy
+  image: alpine:latest
+  variables:
+    GIT_STRATEGY: none
+  before_script:
+    - apk add --no-cache git yq
+    - git config --global user.email "gitlab-ci@${CI_PROJECT_PATH}.com"
+    - git config --global user.name "GitLab CI Bot"
+  script:
+    - IMAGE_NAME="${CI_REGISTRY_IMAGE}/$CI_COMMIT_BRANCH:${CI_COMMIT_SHA}"
+
+    # Extract the service name from the project name and convert to lowerclass
+    - SERVICE_NAME=$(echo "$CI_PROJECT_NAME" | tr '[:upper:]' '[:lower:]')
+    - YAML_FILE="${SERVICE_NAME}.yaml"
+
+    # Debugging outputs
+    # - echo "Service name= $SERVICE_NAME"
+    # - echo "YAML file= $YAML_FILE"
+
+    # Clone k8s repo
+    - git clone "https://oauth2:${GITLAB_TOKEN}@gitlab.com/cs302-2025/g2-team5/k8s.git" gitops-repo
+    - cd gitops-repo
+    - git checkout main
+
+    # Debugging outputs
+    # - echo "repo contents:"
+    # - ls -la
+
+    # Check if the YAML file exists
+    - |
+      if [ ! -f "$YAML_FILE" ]; then
+        echo "Error: $YAML_FILE not found in k8s repository!"
+        echo "Available files:"
+        ls -la *.yaml || echo "No YAML files found"
+        exit 1
+      fi
+
+    - echo "Updating $YAML_FILE with image= $IMAGE_NAME"
+    - yq e '(select(.kind == "Deployment") | .spec.template.spec.containers[0].image) = "'$IMAGE_NAME'"' -i "$YAML_FILE"
+    - git add "$YAML_FILE"
+    - git diff --cached --exit-code || (git commit -m "Update $SERVICE_NAME image to $IMAGE_NAME [skip ci]" && git push origin main)
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+      when: on_success
+  dependencies:
+    - release-image
