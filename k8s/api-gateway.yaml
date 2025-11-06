@@ -37,21 +37,21 @@ spec:
           env:
             # Environment variables for nginx template substitution - UPDATED PORTS
             - name: insurance_service_url_internal
-              value: "http://insurance:5200"
+              value: "http://insurance:8001"
             - name: notification_service_url_internal
-              value: "http://notification:8000"
+              value: "http://notification:8001"
             - name: dispatch_service_url_internal
-              value: "http://dispatch:8081"
+              value: "http://dispatch:8001"
             - name: billings_service_url_internal
-              value: "http://billings:5100"
+              value: "http://billings:8001"
             - name: events_manager_service_url_internal
-              value: "http://events-manager:8011"
+              value: "http://events-manager:8001"
             - name: triage_service_url_internal
-              value: "http://triage:5001"
+              value: "http://triage:8001"
             - name: wearable_service_url_internal
-              value: "http://wearable:5000"
+              value: "http://wearable:8001"
             - name: events_stream_service_url_internal
-              value: "http://events-stream:8090"
+              value: "http://events-stream:8001"
           envFrom:
             - secretRef:
                 name: env-vars-secret
