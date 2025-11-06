@@ -28,27 +28,27 @@ spec:
         app: events-stream
     spec:
       containers:
-      - name: events-stream
-        image: registry.gitlab.com/cs302-2025/g2-team5/services/events-stream/main:latest
-        imagePullPolicy: Always
-        ports:
-        - containerPort: 8090
-        envFrom:
-        - secretRef:
-            name: env-vars-secret
-        - configMapRef:
-            name: env-vars-configmap
-        livenessProbe:
-          httpGet:
-            path: /health
-            port: 8090
-          initialDelaySeconds: 5
-          periodSeconds: 10
-        readinessProbe:
-          httpGet:
-            path: /health
-            port: 8090
-          initialDelaySeconds: 5
-          periodSeconds: 10
+        - name: events-stream
+          image: registry.gitlab.com/cs302-2025/g2-team5/services/events-stream/main:e37c1050620ca16652946f8aa2e71947c77a6e17
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8090
+          envFrom:
+            - secretRef:
+                name: env-vars-secret
+            - configMapRef:
+                name: env-vars-configmap
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8090
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8090
+            initialDelaySeconds: 5
+            periodSeconds: 10
       imagePullSecrets:
-      - name: gitlab-registry-access-g2t5
+        - name: gitlab-registry-access-g2t5
