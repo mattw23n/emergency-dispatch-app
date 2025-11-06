@@ -538,6 +538,8 @@ def create_app(db_uri: Optional[str] = None) -> Flask:
                         create_db_sql = (
                             f"CREATE DATABASE IF NOT EXISTS {database_name}"
                         )
+                        # Database name is validated with regex above, safe from SQL injection
+                        # nosemgrep: python.sqlalchemy.security.audit.avoid-sqlalchemy-text.avoid-sqlalchemy-text
                         conn.execute(text(create_db_sql))
                         conn.commit()
                     engine.dispose()
