@@ -3,8 +3,7 @@ stages:
   - Security Testing
   - Test
   - Release
-  # - Staging
-  # - Deploy
+  - Deploy
 
 
 flake8:
@@ -74,6 +73,31 @@ release-image:
   script:
     - docker build --pull -t "$CI_REGISTRY_IMAGE/$CI_COMMIT_BRANCH:latest" -t "$CI_REGISTRY_IMAGE/$CI_COMMIT_BRANCH:$CI_COMMIT_SHA" .
     - docker push "$CI_REGISTRY_IMAGE/$CI_COMMIT_BRANCH" --all-tags
+
+update_gitops_manifest:
+  stage: Deploy
+  image: alpine:latest
+  variables:
+    GIT_STRATEGY: none
+  before_script:
+    - apk add --no-cache git yq
+    - git config --global user.email "gitlab-ci@${CI_PROJECT_PATH}.com"
+    - git config --global user.name "GitLab CI Bot"
+  script:
+    - IMAGE_NAME="${CI_REGISTRY_IMAGE}/$CI_COMMIT_BRANCH:${CI_COMMIT_SHA}"
+    - git clone "https://oauth2:${GITLAB_TOKEN}@gitlab.com/cs302-2025/g2-team5/k8s.git" gitops-repo
+    - cd gitops-repo
+    - git checkout main
+    - echo "repo contents:"
+    - ls -la
+    - yq e '(select(.kind == "Deployment") | .spec.template.spec.containers[0].image) = "'$IMAGE_NAME'"' -i "wearable.yaml"
+    - git add wearable.yaml
+    - git diff --cached --exit-code || (git commit -m "Update wearable image to $IMAGE_NAME [skip ci]" && git push origin main)
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+      when: on_success
+  dependencies:
+    - release-image
 
 # deploy-staging:
 #   stage: Staging
