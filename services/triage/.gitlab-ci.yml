@@ -91,8 +91,8 @@ update_gitops_manifest:
     - YAML_FILE="${SERVICE_NAME}.yaml"
 
     # Debugging outputs
-    - echo "Service name= $SERVICE_NAME"
-    - echo "YAML file= $YAML_FILE"
+    # - echo "Service name= $SERVICE_NAME"
+    # - echo "YAML file= $YAML_FILE"
 
     # Clone k8s repo
     - git clone "https://oauth2:${GITLAB_TOKEN}@gitlab.com/cs302-2025/g2-team5/k8s.git" gitops-repo
