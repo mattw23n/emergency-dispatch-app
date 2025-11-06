@@ -512,6 +512,11 @@ def create_app(db_uri: Optional[str] = None) -> Flask:
                 database_name = DB_URL.path.lstrip('/')
             else:
                 database_name = db_uri.rsplit('/', 1)[-1]
+            
+            # Validate database name to prevent SQL injection
+            import re
+            if not re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', database_name):
+                raise ValueError(f"Invalid database name: {database_name}")
 
             # Build connection string without database name to create it
             if DB_URL:
