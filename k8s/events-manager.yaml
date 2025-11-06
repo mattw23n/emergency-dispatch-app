@@ -28,27 +28,27 @@ spec:
         app: events-manager
     spec:
       containers:
-      - name: events-manager
-        image: registry.gitlab.com/cs302-2025/g2-team5/services/events-manager/main:latest
-        imagePullPolicy: Always
-        ports:
-        - containerPort: 8011
-        envFrom:
-        - secretRef:
-            name: env-vars-secret
-        - configMapRef:
-            name: env-vars-configmap
-        livenessProbe:
-          httpGet:
-            path: /health
-            port: 8011
-          initialDelaySeconds: 5
-          periodSeconds: 10
-        readinessProbe:
-          httpGet:
-            path: /health
-            port: 8011
-          initialDelaySeconds: 5
-          periodSeconds: 10
+        - name: events-manager
+          image: registry.gitlab.com/cs302-2025/g2-team5/services/events-manager/main:2bb43f0bd907eca1b36297ba4b38099714375c60
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8011
+          envFrom:
+            - secretRef:
+                name: env-vars-secret
+            - configMapRef:
+                name: env-vars-configmap
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8011
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8011
+            initialDelaySeconds: 5
+            periodSeconds: 10
       imagePullSecrets:
-      - name: gitlab-registry-access-g2t5
+        - name: gitlab-registry-access-g2t5
