@@ -28,27 +28,27 @@ spec:
         app: billings
     spec:
       containers:
-      - name: billings
-        image: registry.gitlab.com/cs302-2025/g2-team5/services/billings/main:latest
-        imagePullPolicy: Always
-        ports:
-        - containerPort: 5100
-        envFrom:
-        - secretRef:
-            name: env-vars-secret
-        - configMapRef:
-            name: env-vars-configmap
-        livenessProbe:
-          httpGet:
-            path: /health
-            port: 5100
-          initialDelaySeconds: 5
-          periodSeconds: 10
-        readinessProbe:
-          httpGet:
-            path: /health
-            port: 5100
-          initialDelaySeconds: 5
-          periodSeconds: 10
+        - name: billings
+          image: registry.gitlab.com/cs302-2025/g2-team5/services/billings/main:bb211418e2eb2f1ba3b24c476ed1990cc4f614e4
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 5100
+          envFrom:
+            - secretRef:
+                name: env-vars-secret
+            - configMapRef:
+                name: env-vars-configmap
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 5100
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 5100
+            initialDelaySeconds: 5
+            periodSeconds: 10
       imagePullSecrets:
-      - name: gitlab-registry-access-g2t5
+        - name: gitlab-registry-access-g2t5
