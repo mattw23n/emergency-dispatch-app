@@ -90,9 +90,9 @@ update_gitops_manifest:
     - git checkout main
     - echo "repo contents:"
     - ls -la
-    - yq e '(select(.kind == "Deployment") | .spec.template.spec.containers[0].image) = "'$IMAGE_NAME'"' -i "wearable.yaml"
-    - git add wearable.yaml
-    - git diff --cached --exit-code || (git commit -m "Update wearable image to $IMAGE_NAME [skip ci]" && git push origin main)
+    - yq e '(select(.kind == "Deployment") | .spec.template.spec.containers[0].image) = "'$IMAGE_NAME'"' -i "triage.yaml"
+    - git add triage.yaml
+    - git diff --cached --exit-code || (git commit -m "Update triage image to $IMAGE_NAME [skip ci]" && git push origin main)
   rules:
     - if: '$CI_COMMIT_BRANCH == "main"'
       when: on_success
