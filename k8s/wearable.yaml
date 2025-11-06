@@ -20,7 +20,7 @@ metadata:
 spec:
   replicas: 1 #Only one mocked wearable at a time
   strategy:
-    type: Recreate 
+    type: Recreate
   selector:
     matchLabels:
       app: wearable
@@ -31,7 +31,7 @@ spec:
     spec:
       containers:
         - name: wearable
-          image: registry.gitlab.com/cs302-2025/g2-team5/services/wearable/main:e269a2ae90634b62e5e871290c92048dc1b66861
+          image: registry.gitlab.com/cs302-2025/g2-team5/services/wearable/main:21592cabf699ef0335cfbfd23d872fba3e3124ba
           imagePullPolicy: Always
           ports:
             - containerPort: 5000
