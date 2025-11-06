@@ -1,5 +1,4 @@
 @echo off
-REM This script assumes minikube is running and kubectl is configured
 
 SETLOCAL ENABLEDELAYEDEXPANSION
 SET ARGO_NS=argocd
@@ -100,54 +99,46 @@ IF ERRORLEVEL 1 (
 )
 ECHO ✓ Applications deployed successfully
 
-REM Setup port forwarding and get credentials
-ECHO [6/6] Setting up access...
-
-REM Start port forwarding in background
-ECHO Starting ArgoCD port forwarding...
-START /B kubectl port-forward svc/argocd-server -n %ARGO_NS% 8080:443
-timeout /t 3 /nobreak >nul
+REM Setup access instructions
+ECHO [6/6] Setup complete! Providing access instructions...
 
 ECHO.
 ECHO ===================================================================
-ECHO                   SETUP COMPLETE & READY FOR ACCESS
+ECHO                   SETUP COMPLETE - ACCESS INSTRUCTIONS
 ECHO ===================================================================
 ECHO Your entire Emergency Response System is now deploying via ArgoCD.
 ECHO ArgoCD will synchronize all applications from the k8s repository.
 ECHO.
 
-ECHO --- ARGOCD ACCESS DETAILS ---
+ECHO --- HOW TO ACCESS ARGOCD WEB UI ---
 ECHO.
-ECHO 1. ArgoCD Web UI URL:
-FOR /F %%i IN ('minikube service argocd-server -n %ARGO_NS% --url 2^>nul') DO (
-    SET ARGOCD_URL=%%i
-    ECHO    URL: %%i
-)
-ECHO    Note: Accept the self-signed certificate warning
+ECHO 1. Open a NEW terminal/command prompt window
+ECHO.
+ECHO 2. Run this command to get the ARGOCD Web UI:
+ECHO   minikube service argocd-server -n %ARGO_NS% --url
+ECHO.
+ECHO 3. Keep that terminal window open (don't close it)
+ECHO.
+ECHO 4. Accept the self-signed certificate warning
+ECHO.
 
+ECHO --- LOGIN CREDENTIALS ---
 ECHO.
-ECHO 2. Login Credentials:
-ECHO    Username: admin
-ECHO    Password: 
-FOR /F %%i IN ('kubectl -n %ARGO_NS% get secret argocd-initial-admin-secret -o jsonpath^="{.data.password}" 2^>nul') DO (
-    ECHO %%i | certutil -decode -f >temp_password.txt 2>nul
-    SET /P ADMIN_PASSWORD=<temp_password.txt
-    DEL temp_password.txt 2>nul
-    ECHO    !ADMIN_PASSWORD!
-)
+ECHO Username: admin
+ECHO.
+ECHO To get the password, run this command in another terminal:
+ECHO kubectl get secret argocd-initial-admin-secret -n %ARGO_NS% -o jsonpath="{.data.password}" ^| base64 -d
+ECHO.
+ECHO Or if you have PowerShell:
+ECHO powershell -Command "kubectl get secret argocd-initial-admin-secret -n %ARGO_NS% -o jsonpath='{.data.password}' | ForEach-Object { [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($_)) }"
+ECHO.
 
-ECHO.
 ECHO --- APPLICATION ACCESS ---
 ECHO.
-ECHO API Gateway (Main Entry Point):
+ECHO Your Emergency Response System API Gateway will be available at:
 FOR /F %%i IN ('minikube ip 2^>nul') DO SET MINIKUBE_IP=%%i
-ECHO    URL: http://!MINIKUBE_IP!:30080
+ECHO    Main URL: http://!MINIKUBE_IP!:30080
 ECHO    Dashboard: http://!MINIKUBE_IP!:30080/
 ECHO    API Base: http://!MINIKUBE_IP!:30080/api/v1/
-ECHO.
-
-ECHO.
-ECHO Setup complete! ArgoCD is running and applications are deploying.
-ECHO Check the ArgoCD UI for deployment progress and status.
 ECHO.
 PAUSE
