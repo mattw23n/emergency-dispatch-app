@@ -28,27 +28,27 @@ spec:
         app: dispatch
     spec:
       containers:
-      - name: dispatch
-        image: registry.gitlab.com/cs302-2025/g2-team5/services/dispatch/main:latest
-        imagePullPolicy: Always
-        ports:
-        - containerPort: 8081
-        envFrom:
-        - secretRef:
-            name: env-vars-secret
-        - configMapRef:
-            name: env-vars-configmap
-        livenessProbe:
-          httpGet:
-            path: /health
-            port: 8081
-          initialDelaySeconds: 5
-          periodSeconds: 10
-        readinessProbe:
-          httpGet:
-            path: /health
-            port: 8081
-          initialDelaySeconds: 5
-          periodSeconds: 10
+        - name: dispatch
+          image: registry.gitlab.com/cs302-2025/g2-team5/services/dispatch/main:638e9dfc0862c7fcf7e4e7bd501d655a0f93e80a
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8081
+          envFrom:
+            - secretRef:
+                name: env-vars-secret
+            - configMapRef:
+                name: env-vars-configmap
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8081
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8081
+            initialDelaySeconds: 5
+            periodSeconds: 10
       imagePullSecrets:
-      - name: gitlab-registry-access-g2t5
+        - name: gitlab-registry-access-g2t5
