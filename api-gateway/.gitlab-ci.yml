@@ -3,6 +3,7 @@ stages:
   - Release
   - Deploy
 
+
 semgrep:
   stage: Security Testing
   image: returntocorp/semgrep
