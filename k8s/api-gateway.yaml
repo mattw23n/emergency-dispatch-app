@@ -29,60 +29,60 @@ spec:
         app: api-gateway
     spec:
       containers:
-      - name: api-gateway
-        image: registry.gitlab.com/cs302-2025/g2-team5/api-gateway/main:latest
-        imagePullPolicy: Always
-        ports:
-        - containerPort: 80
-        env:
-        # Environment variables for nginx template substitution - UPDATED PORTS
-        - name: insurance_service_url_internal
-          value: "http://insurance:5200"
-        - name: notification_service_url_internal
-          value: "http://notification:8000"
-        - name: dispatch_service_url_internal
-          value: "http://dispatch:8081"
-        - name: billings_service_url_internal
-          value: "http://billings:5100"
-        - name: events_manager_service_url_internal
-          value: "http://events-manager:8011"
-        - name: triage_service_url_internal
-          value: "http://triage:5001"
-        - name: wearable_service_url_internal
-          value: "http://wearable:5000"
-        - name: events_stream_service_url_internal
-          value: "http://events-stream:8090"
-        envFrom:
-        - secretRef:
-            name: env-vars-secret
-        - configMapRef:
-            name: env-vars-configmap
-        livenessProbe:
-          httpGet:
-            path: /
-            port: 80
-          initialDelaySeconds: 30
-          periodSeconds: 30
-          timeoutSeconds: 5
-          failureThreshold: 3
-        readinessProbe:
-          httpGet:
-            path: /
-            port: 80
-          initialDelaySeconds: 10
-          periodSeconds: 10
-          timeoutSeconds: 3
-          failureThreshold: 3
-        startupProbe:
-          httpGet:
-            path: /
-            port: 80
-          initialDelaySeconds: 5
-          periodSeconds: 5
-          timeoutSeconds: 3
-          failureThreshold: 12
+        - name: api-gateway
+          image: registry.gitlab.com/cs302-2025/g2-team5/api-gateway/main:cf993a5bf2fa6ed4748cabba3e68a1ecd019f0ec
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 80
+          env:
+            # Environment variables for nginx template substitution - UPDATED PORTS
+            - name: insurance_service_url_internal
+              value: "http://insurance:5200"
+            - name: notification_service_url_internal
+              value: "http://notification:8000"
+            - name: dispatch_service_url_internal
+              value: "http://dispatch:8081"
+            - name: billings_service_url_internal
+              value: "http://billings:5100"
+            - name: events_manager_service_url_internal
+              value: "http://events-manager:8011"
+            - name: triage_service_url_internal
+              value: "http://triage:5001"
+            - name: wearable_service_url_internal
+              value: "http://wearable:5000"
+            - name: events_stream_service_url_internal
+              value: "http://events-stream:8090"
+          envFrom:
+            - secretRef:
+                name: env-vars-secret
+            - configMapRef:
+                name: env-vars-configmap
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          startupProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 12
       imagePullSecrets:
-      - name: gitlab-registry-access-g2t5
+        - name: gitlab-registry-access-g2t5
 ---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
