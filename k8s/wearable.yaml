@@ -18,7 +18,9 @@ metadata:
   labels:
     app: wearable
 spec:
-  replicas: 2
+  replicas: 1 #Only one mocked wearable at a time
+  strategy:
+    type: Recreate 
   selector:
     matchLabels:
       app: wearable
@@ -42,13 +44,8 @@ spec:
             httpGet:
               path: /health
               port: 5000
-            initialDelaySeconds: 5
+            initialDelaySeconds: 15
             periodSeconds: 10
-          readinessProbe:
-            httpGet:
-              path: /health
-              port: 5000
-            initialDelaySeconds: 5
-            periodSeconds: 10
+            timeoutSeconds: 5
       imagePullSecrets:
         - name: gitlab-registry-access-g2t5
