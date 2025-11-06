@@ -28,27 +28,27 @@ spec:
         app: notification
     spec:
       containers:
-      - name: notification
-        image: registry.gitlab.com/cs302-2025/g2-team5/services/notification/main:latest
-        imagePullPolicy: Always
-        ports:
-        - containerPort: 8000
-        envFrom:
-        - secretRef:
-            name: env-vars-secret
-        - configMapRef:
-            name: env-vars-configmap
-        livenessProbe:
-          httpGet:
-            path: /health
-            port: 8000
-          initialDelaySeconds: 5
-          periodSeconds: 10
-        readinessProbe:
-          httpGet:
-            path: /health
-            port: 8000
-          initialDelaySeconds: 5
-          periodSeconds: 10
+        - name: notification
+          image: registry.gitlab.com/cs302-2025/g2-team5/services/notification/main:c89bb96278352ff5e8d3987a72131fe701316d18
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - secretRef:
+                name: env-vars-secret
+            - configMapRef:
+                name: env-vars-configmap
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
       imagePullSecrets:
-      - name: gitlab-registry-access-g2t5
+        - name: gitlab-registry-access-g2t5
