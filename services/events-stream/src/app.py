@@ -32,10 +32,10 @@ def create_rabbitmq_connection():
     """Create a RabbitMQ connection."""
     rabbit_host = os.environ.get("RABBITMQ_HOST", "rabbitmq")
     rabbit_port = int(os.environ.get("RABBITMQ_PORT", "5672"))
-    
+
     max_retries = 10
     retry_delay = 2
-    
+
     for attempt in range(max_retries):
         try:
             connection = pika.BlockingConnection(
@@ -68,22 +68,22 @@ def rabbitmq_consumer():
     - event.billing.*
     """
     print("[Consumer] Starting RabbitMQ consumer thread...")
-    
+
     try:
         connection = create_rabbitmq_connection()
         channel = connection.channel()
-        
+
         # Declare exchange (should already exist, but this is idempotent)
         channel.exchange_declare(
             exchange='amqp.topic',
             exchange_type='topic',
             durable=True
         )
-        
+
         # Create a temporary queue for this consumer to listen to ALL events
         result = channel.queue_declare(queue='', exclusive=True)
         queue_name = result.method.queue
-        
+
         # Bind to all event patterns we want to monitor
         routing_keys = [
             'event.wearable.vitals',
@@ -93,7 +93,7 @@ def rabbitmq_consumer():
             'event.billing.*',
             'dispatch.updates.*',
         ]
-        
+
         for routing_key in routing_keys:
             channel.queue_bind(
                 exchange='amqp.topic',
@@ -101,18 +101,18 @@ def rabbitmq_consumer():
                 routing_key=routing_key
             )
             print(f"[Consumer] Bound to routing key: {routing_key}")
-        
+
         service_health["consumers_active"] = len(routing_keys)
-        
+
         def callback(ch, method, properties, body):
             """Handle incoming messages and push to SSE queue."""
             try:
                 # Parse message
                 message_data = json.loads(body)
-                
+
                 # Extract key information
                 routing_key = method.routing_key
-                
+
                 # Determine event type from routing key
                 event_type = 'unknown'
                 if 'wearable' in routing_key:
@@ -125,7 +125,7 @@ def rabbitmq_consumer():
                     event_type = 'notification'
                 elif 'billing' in routing_key:
                     event_type = 'billing'
-                
+
                 # Create event for dashboard
                 dashboard_event = {
                     'type': event_type,
@@ -133,7 +133,7 @@ def rabbitmq_consumer():
                     'timestamp': datetime.utcnow().isoformat(),
                     'data': message_data
                 }
-                
+
                 # Push to SSE queue (non-blocking)
                 try:
                     event_queue.put_nowait(dashboard_event)
@@ -141,22 +141,22 @@ def rabbitmq_consumer():
                     print(f"[Consumer] Event queued: {routing_key}")
                 except queue.Full:
                     print("[Consumer] Warning: Event queue is full, dropping event")
-                
+
             except json.JSONDecodeError:
                 print(f"[Consumer] Warning: Could not decode message: {body}")
             except Exception as e:
                 print(f"[Consumer] Error processing message: {e}")
-        
+
         # Start consuming
         channel.basic_consume(
             queue=queue_name,
             on_message_callback=callback,
             auto_ack=True
         )
-        
+
         print("[Consumer] ✓ Waiting for events...")
         channel.start_consuming()
-        
+
     except KeyboardInterrupt:
         print("[Consumer] Interrupted")
     except Exception as e:
@@ -183,32 +183,32 @@ def stream_events():
     def events_stream():
         """Generator that yields SSE formatted messages."""
         print("[SSE] Client connected to event stream")
-        
+
         # Send initial connection message
         yield f"data: {json.dumps({'type': 'connection', 'message': 'Connected to event stream'})}\n\n"
-        
+
         # Keep track of events sent to this client
         events_sent = 0
-        
+
         try:
             while True:
                 try:
                     # Wait for an event from the queue (timeout to allow heartbeat)
                     event = event_queue.get(timeout=30)
-                    
+
                     # Send event to client
                     yield f"data: {json.dumps(event)}\n\n"
-                    
+
                     events_sent += 1
                     service_health["events_streamed"] = events_sent
-                    
+
                 except queue.Empty:
                     # Send heartbeat to keep connection alive
                     yield f": heartbeat\n\n"
-                    
+
         except GeneratorExit:
             print(f"[SSE] Client disconnected (sent {events_sent} events)")
-    
+
     return Response(
         events_stream(),
         mimetype='text/event-stream',
@@ -224,10 +224,10 @@ if __name__ == '__main__':
     # Start RabbitMQ consumer in background thread
     consumer_thread = threading.Thread(target=rabbitmq_consumer, daemon=True)
     consumer_thread.start()
-    
+
     # Give consumer a moment to connect
     time.sleep(2)
-    
+
     # Start Flask app
     port = int(os.environ.get('PORT', '8090'))
     print(f"[Flask] Starting Event Stream Service on port {port}")
