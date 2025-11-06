@@ -92,7 +92,7 @@ update_gitops_manifest:
     - git checkout main
     - echo "repo contents:"
     - ls -la
-    - yq e ".spec.template.spec.containers[0].image = \"$IMAGE_NAME\"" -i "wearable.yaml"
+    - yq e '(select(.kind == "Deployment") | .spec.template.spec.containers[0].image) = "'$IMAGE_NAME'"' -i "wearable.yaml"
     - git add wearable.yaml
     - git diff --cached --exit-code || (git commit -m "Update wearable image to $IMAGE_NAME [skip ci]" && git push origin main)
   rules:
