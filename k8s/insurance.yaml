@@ -28,27 +28,27 @@ spec:
         app: insurance
     spec:
       containers:
-      - name: insurance
-        image: registry.gitlab.com/cs302-2025/g2-team5/services/insurance/main:latest
-        imagePullPolicy: Always
-        ports:
-        - containerPort: 5200
-        envFrom:
-        - secretRef:
-            name: env-vars-secret
-        - configMapRef:
-            name: env-vars-configmap
-        livenessProbe:
-          httpGet:
-            path: /health
-            port: 5200
-          initialDelaySeconds: 5
-          periodSeconds: 10
-        readinessProbe:
-          httpGet:
-            path: /health
-            port: 5200
-          initialDelaySeconds: 5
-          periodSeconds: 10
+        - name: insurance
+          image: registry.gitlab.com/cs302-2025/g2-team5/services/insurance/main:95f5b7c9009e8496b478677f9dd126e586ab0926
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 5200
+          envFrom:
+            - secretRef:
+                name: env-vars-secret
+            - configMapRef:
+                name: env-vars-configmap
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 5200
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 5200
+            initialDelaySeconds: 5
+            periodSeconds: 10
       imagePullSecrets:
-      - name: gitlab-registry-access-g2t5
+        - name: gitlab-registry-access-g2t5
