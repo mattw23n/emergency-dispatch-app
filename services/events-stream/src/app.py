@@ -204,7 +204,7 @@ def stream_events():
 
                 except queue.Empty:
                     # Send heartbeat to keep connection alive
-                    yield f": heartbeat\n\n"
+                    yield ": heartbeat\n\n"
 
         except GeneratorExit:
             print(f"[SSE] Client disconnected (sent {events_sent} events)")
