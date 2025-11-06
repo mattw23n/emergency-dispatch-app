@@ -8,7 +8,7 @@ spec:
     app: billings
   ports:
     - protocol: TCP
-      port: 8001
+      port: 5100
       targetPort: 5100
 ---
 apiVersion: apps/v1

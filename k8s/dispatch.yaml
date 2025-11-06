@@ -8,7 +8,7 @@ spec:
     app: dispatch
   ports:
     - protocol: TCP
-      port: 8001
+      port: 8081
       targetPort: 8081
 ---
 apiVersion: apps/v1
