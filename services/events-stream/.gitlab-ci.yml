@@ -59,7 +59,7 @@ integration-tests:
   before_script:
     - docker info
   script:
-    - docker compose -f ci/compose.test.yaml up --exit-code-from billings-pytest
+    - docker compose -f ci/compose.test.yaml up --exit-code-from events-stream-pytest
 
 # based on: https://gitlab.com/gitlab-org/gitlab/-/blob/master/lib/gitlab/ci/templates/Docker.gitlab-ci.yml
 release-image:
