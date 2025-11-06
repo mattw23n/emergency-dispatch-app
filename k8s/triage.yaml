@@ -29,7 +29,7 @@ spec:
     spec:
       containers:
         - name: triage
-          image: registry.gitlab.com/cs302-2025/g2-team5/services/triage/main:47801abc7a3c85a67383812a82ac0531e023520e
+          image: registry.gitlab.com/cs302-2025/g2-team5/services/triage/main:10288ec8945e5e64b7d909269c223a1f956041f9
           imagePullPolicy: Always
           ports:
             - containerPort: 5001
