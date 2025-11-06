@@ -3,6 +3,7 @@ stages:
   - Security Testing
   - Test
   - Release
+  - Deploy
 
 # flake8:
 #   stage: Static Analysis
