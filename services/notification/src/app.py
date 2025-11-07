@@ -5,7 +5,7 @@ import json
 from os import environ
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from send_sns import send_notification
+from src.send_sns import send_notification
 import uvicorn
 
 # --- FastAPI Setup ---

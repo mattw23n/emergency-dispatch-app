@@ -1,22 +1,19 @@
 services:
-  ####################################
-  # mysql database  
-  ####################################
-  mysql:
-    image: mysql
-    environment:
-      MYSQL_ROOT_PASSWORD: root
-      MYSQL_DATABASE: billing
+  rabbitmq:
+    image: rabbitmq:3-management
+    ports:
+      - "5672:5672"
+      - "15672:15672"
 
-  ##################################
-  # Pytest on Billings Service
-  ##################################
-  billings-pytest:
+  notifications-pytest:
     build:
       context: ../
       dockerfile: ci/Dockerfile.test
     depends_on:
-      - mysql
+      - rabbitmq
     environment:
-      db_conn: mysql+mysqlconnector://root:root@mysql:3306
-
+      amqp_host: rabbitmq
+      AWS_DEFAULT_REGION: us-east-1
+      AWS_ACCESS_KEY_ID: dummy
+      AWS_SECRET_ACCESS_KEY: dummy
+      TOPIC_ARN: arn:aws:sns:us-east-1:000000000000:dummy

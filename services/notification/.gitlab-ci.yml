@@ -52,6 +52,27 @@ gitleaks:
     entrypoint: [""]  # override entrypoint so we call gitleaks directly
   script: ["gitleaks detect --source . --no-git -v"]
 
+pytest:
+  stage: Test
+  image: docker:28.3.2
+  services:
+    - docker:28.3.2-dind
+  variables:
+    DOCKER_HOST: tcp://docker:2375/
+    DOCKER_TLS_CERTDIR: ""
+  before_script:
+    - docker version
+    - docker compose version || docker --version
+  script:
+    - docker compose -f ci/compose.test.yaml up --abort-on-container-exit --build
+  after_script:
+    - docker compose -f ci/compose.test.yaml down
+  artifacts:
+    when: always
+    paths:
+      - tests/reports/
+  allow_failure: false
+
 release-image:
   stage: Release
   image: docker:28.3.2
