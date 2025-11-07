@@ -1,27 +1,27 @@
 stages:
-  # - Static Analysis
+  - Static Analysis
   - Security Testing
-  # - Test
+  - Test
   - Release
   - Deploy
 
-# eslint:
-#   stage: Static Analysis
-#   image: node:20-slim
-#   before_script:
-#     - node -v
-#     - npm -v
-#     - npm install
-#     - npm install --save-dev eslint
-#   script:
-#     - npx eslint src --format json --output-file eslint_report.json || true
-#     - npx eslint src | tee eslint_report.txt
-#   artifacts:
-#     when: always
-#     paths:
-#       - eslint_report.txt
-#       - eslint_report.json
-#   allow_failure: true
+eslint:
+  stage: Static Analysis
+  image: node:20-slim
+  before_script:
+    - node -v
+    - npm -v
+    - npm install
+    - npm install --save-dev eslint
+  script:
+    - npx eslint src --format json --output-file eslint_report.json || true
+    - npx eslint src | tee eslint_report.txt
+  artifacts:
+    when: always
+    paths:
+      - eslint_report.txt
+      - eslint_report.json
+  allow_failure: true
 
 semgrep:
   stage: Security Testing
@@ -42,15 +42,15 @@ gitleaks:
     entrypoint: [""]  # override entrypoint so we call gitleaks directly
   script: ["gitleaks detect --source . --no-git -v"]
 
-# integration-tests:
-#   stage: Test
-#   image: docker:28.3.2
-#   services:
-#     - docker:28.3.2-dind
-#   before_script:
-#     - docker info
-#   script:
-#     - docker compose -f ci/compose.test.yaml up --exit-code-from insurance-pytest
+integration-tests:
+  stage: Test
+  image: docker:28.3.2
+  services:
+    - docker:28.3.2-dind
+  before_script:
+    - docker info
+  script:
+    - docker compose -f ci/compose.test.yaml up --exit-code-from insurance-pytest
 
 release-image:
   stage: Release
