@@ -1,10 +1,14 @@
+"""Pytest configuration and fixtures for billings service tests.
+
+This module provides test fixtures and configuration for the billings service,
+including AMQP connection helpers, mock services, and test utilities.
+"""
 import json
 import os
 import sys
 import threading
 import time
 from types import ModuleType
-from typing import Callable
 
 import pika
 import pytest
@@ -28,6 +32,11 @@ os.environ.setdefault("STRIPE_SECRET_KEY", "sk_test_dummy")
 
 # ---- AMQP helpers ----
 def _amqp_params() -> pika.ConnectionParameters:
+    """Create connection parameters for RabbitMQ.
+
+    Returns:
+        pika.ConnectionParameters: Configured connection parameters.
+    """
     return pika.ConnectionParameters(
         host=os.environ["RABBITMQ_HOST"],
         port=int(os.environ["RABBITMQ_PORT"]),
@@ -35,8 +44,17 @@ def _amqp_params() -> pika.ConnectionParameters:
         # Using default guest/guest; compose relaxes loopback restriction
     )
 
+
 @pytest.fixture(scope="session")
 def amqp_conn():
+    """Create a session-scoped AMQP connection for testing.
+
+    Yields:
+        pika.BlockingConnection: Connection to RabbitMQ.
+
+    Raises:
+        RuntimeError: If connection cannot be established within timeout.
+    """
     # Wait for broker just in case healthcheck hasn't fully opened port
     deadline = time.time() + 30
     last_err = None
@@ -52,8 +70,17 @@ def amqp_conn():
             time.sleep(1.0)
     raise RuntimeError(f"Cannot connect to RabbitMQ: {last_err}")
 
+
 @pytest.fixture
 def amqp_channel(amqp_conn):
+    """Create a test channel with exchange declared.
+
+    Args:
+        amqp_conn: Active AMQP connection fixture.
+
+    Yields:
+        pika.Channel: Configured channel with exchange declared.
+    """
     ch = amqp_conn.channel()
     ch.exchange_declare(
         exchange=os.environ["AMQP_EXCHANGE_NAME"],
@@ -70,10 +97,17 @@ def amqp_channel(amqp_conn):
 # ---- Stripe fake module (prevents real import & API calls) ----
 @pytest.fixture
 def fake_stripe_module(monkeypatch):
-    """
+    """Create a fake stripe_service module for testing.
+
     Inserts a fake 'stripe_service' module into sys.modules so that
-    billings.process_payment imports this fake one.
-    You can customize return values per-test by setting attributes later.
+    billings.process_payment imports this fake one. You can customize
+    return values per-test by setting attributes later.
+
+    Args:
+        monkeypatch: Pytest monkeypatch fixture.
+
+    Returns:
+        ModuleType: The fake stripe_service module.
     """
     fake = ModuleType("stripe_service")
 
@@ -93,21 +127,33 @@ def fake_stripe_module(monkeypatch):
 # ---- Import app AFTER we set env and fakes ----
 @pytest.fixture(scope="session")
 def billings_app_module():
+    """Provide the billings application module with test configuration.
+
+    Returns:
+        module: The imported billings app module.
+    """
     # Import after env is set
     import app as billings_app  # your billings app.py
+
     return billings_app
 
 
 # ---- Start/stop the consumer in the background (integration tests) ----
 @pytest.fixture
 def run_consumer(billings_app_module):
-    """
-    Start the billings consume() loop in a background thread.
-    In tests we control its lifetime via the global `should_stop` flag.
+    """Start and manage the billings consumer in a background thread.
+
+    The consumer runs until the test completes, with its lifetime controlled
+    by the global `should_stop` flag in the billings app module.
+
+    Args:
+        billings_app_module: The billings application module.
     """
     # Ensure fresh stop flag
     billings_app_module.should_stop = False
-    t = threading.Thread(target=billings_app_module.consume, name="billings-consumer", daemon=True)
+    t = threading.Thread(
+        target=billings_app_module.consume, name="billings-consumer", daemon=True
+    )
     t.start()
     # Give it a moment to connect and declare
     time.sleep(0.7)
@@ -116,13 +162,24 @@ def run_consumer(billings_app_module):
     # Let it exit its loop
     time.sleep(0.5)
 
+
 @pytest.fixture
 def event_sniffer(amqp_channel):
-    """
-    Usage:
-        get_completed = event_sniffer("event.billing.completed")  # binds now
+    """Create a function to capture AMQP messages for testing.
+
+    The returned function can be used to wait for and capture messages
+    published to a specific routing key.
+
+    Args:
+        amqp_channel: Active AMQP channel fixture.
+
+    Returns:
+        A function that takes a routing key and returns a message getter.
+
+    Example:
+        get_completed = event_sniffer("event.billing.completed")
         # ... publish ...
-        msg = get_completed(timeout_s=8.0)  # polls same queue
+        msg = get_completed(timeout_s=8.0)
     """
     ex = os.environ["AMQP_EXCHANGE_NAME"]
 
@@ -146,8 +203,24 @@ def event_sniffer(amqp_channel):
 
     return start
 
+
 @pytest.fixture
 def bind_and_get_one(amqp_channel):
+    """Fixture to bind to a routing key and wait for a single message.
+
+    Creates a temporary queue bound to the specified routing key and waits
+    for a message to arrive on that queue.
+
+    Args:
+        amqp_channel: Active AMQP channel fixture.
+
+    Returns:
+        A function that takes a routing key and optional timeout.
+
+    Example:
+        # In test:
+        message = bind_and_get_one("some.routing.key")
+    """
     ex = os.environ["AMQP_EXCHANGE_NAME"]
 
     def _fn(bind_key: str, timeout_s: float = 8.0):
@@ -167,4 +240,3 @@ def bind_and_get_one(amqp_channel):
         return None
 
     return _fn
-

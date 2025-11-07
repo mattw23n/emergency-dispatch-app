@@ -1,3 +1,8 @@
+"""AMQP setup and configuration for the billing service.
+
+This module provides the AMQPSetup class which handles the connection, setup,
+and message publishing to RabbitMQ for the billing service.
+"""
 import json
 import time
 from os import environ
@@ -6,7 +11,17 @@ import pika
 
 
 class AMQPSetup:
+    """Manages AMQP connection and setup for the billing service.
+
+    Handles connection to RabbitMQ, exchange/queue declarations, and message publishing
+    for billing-related events and commands.
+    """
+
     def __init__(self):
+        """Initialize AMQP connection parameters and configuration.
+
+        Reads configuration from environment variables with fallback to defaults.
+        """
         # Connection details (explicit vhost & creds to match compose)
         self.hostname = environ.get("RABBITMQ_HOST", "localhost")
         self.port = int(environ.get("RABBITMQ_PORT", "5672"))
@@ -33,6 +48,11 @@ class AMQPSetup:
         self.channel = None
 
     def _conn_params(self) -> pika.ConnectionParameters:
+        """Create connection parameters for RabbitMQ.
+
+        Returns:
+            pika.ConnectionParameters: Configured connection parameters.
+        """
         return pika.ConnectionParameters(
             host=self.hostname,
             port=self.port,
@@ -44,6 +64,14 @@ class AMQPSetup:
         )
 
     def connect(self, timeout_s: int = 60):
+        """Establish connection to RabbitMQ with retry logic.
+
+        Args:
+            timeout_s: Maximum time in seconds to attempt connection.
+
+        Raises:
+            RuntimeError: If connection cannot be established within timeout.
+        """
         print(f"Attempting to connect to RabbitMQ at {self.hostname}:{self.port}")
         params = self._conn_params()
         start = time.time()
@@ -65,6 +93,13 @@ class AMQPSetup:
                 time.sleep(2)
 
     def setup(self):
+        """Set up exchange, queues, and bindings in RabbitMQ.
+
+        Declares the exchange, creates queues, and sets up the necessary bindings.
+
+        Raises:
+            RuntimeError: If called before establishing a connection.
+        """
         if not self.channel or not self.channel.is_open:
             raise RuntimeError("Channel not open; call connect() first.")
 
@@ -139,6 +174,12 @@ class AMQPSetup:
             return False
 
     def close(self):
+        """Safely close the AMQP channel and connection.
+
+        This method ensures that both the channel and connection are properly closed
+        to free up resources. Any exceptions during closing are caught and ignored
+        to allow the application to continue running.
+        """
         try:
             if self.channel and self.channel.is_open:
                 self.channel.close()

@@ -1,11 +1,13 @@
+"""Integration tests for the billings service.
+
+This module contains integration tests that verify the interaction between the billings service
+and its dependencies, including the message broker and external services.
+"""
 import json
 import os
-import time
 import uuid
 
 import pika
-import pytest
-
 
 EX = os.environ["AMQP_EXCHANGE_NAME"]
 EX_TYPE = os.environ["AMQP_EXCHANGE_TYPE"]
@@ -40,18 +42,27 @@ def _publish(rk: str, body: dict, corr_id: str | None = None):
         conn.close()
 
 
-def test_integration_billing_completed(run_consumer, bind_and_get_one, fake_stripe_module, monkeypatch, billings_app_module):
-    """
-    Publish cmd.billing.initiate, expect event.billing.completed with status COMPLETED.
-    """
+def test_integration_billing_completed(
+    run_consumer, bind_and_get_one, fake_stripe_module, monkeypatch, billings_app_module
+):
+    """Publish cmd.billing.initiate, expect event.billing.completed with status COMPLETED."""
     # Make sure insurance passes
     monkeypatch.setattr(
         billings_app_module,
         "verify_insurance",
-        lambda incident_id, patient_id, amount=None: {"verified": True, "reason": "OK", "message": "ok", "http_status": 200},
+        lambda incident_id, patient_id, amount=None: {
+            "verified": True,
+            "reason": "OK",
+            "message": "ok",
+            "http_status": 200,
+        },
     )
     # Stripe success via fake module
-    fake_stripe_module.process_stripe_payment = lambda **kw: {"success": True, "payment_intent_id": "pi_it_ok", "client_secret": "cs"}
+    fake_stripe_module.process_stripe_payment = lambda **kw: {
+        "success": True,
+        "payment_intent_id": "pi_it_ok",
+        "client_secret": "cs",
+    }
 
     incident_id = str(uuid.uuid4())
     payload = {
@@ -70,15 +81,18 @@ def test_integration_billing_completed(run_consumer, bind_and_get_one, fake_stri
     assert float(msg["amount"]) == 123.45
 
 
-def test_integration_insurance_no_policy(run_consumer, event_sniffer, fake_stripe_module, monkeypatch, billings_app_module):
-    """
-    Publish cmd.billing.initiate, force insurance NO_POLICY; expect event.billing.failed with INSURANCE_NOT_FOUND.
-    """
+def test_integration_insurance_no_policy(
+    run_consumer, event_sniffer, fake_stripe_module, monkeypatch, billings_app_module
+):
+    """Publish cmd.billing.initiate, force insurance NO_POLICY; expect event.billing.failed with INSURANCE_NOT_FOUND."""
     monkeypatch.setattr(
         billings_app_module,
         "verify_insurance",
         lambda incident_id, patient_id, amount=None: {
-            "verified": False, "reason": "NO_POLICY", "message": "no policy", "http_status": 404
+            "verified": False,
+            "reason": "NO_POLICY",
+            "message": "no policy",
+            "http_status": 404,
         },
     )
 
@@ -97,4 +111,3 @@ def test_integration_insurance_no_policy(run_consumer, event_sniffer, fake_strip
     assert msg is not None, "Did not receive event.billing.failed"
     assert msg.get("status") == "INSURANCE_NOT_FOUND"
     assert msg.get("incident_id") == incident_id
-

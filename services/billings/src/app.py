@@ -1,9 +1,15 @@
+"""Billing Service for the Healthcare System.
+
+This module implements the billing service that handles payment processing,
+insurance verification, and billing status updates. It provides both an HTTP API
+for health checks and a message consumer for processing billing commands.
+"""
 import datetime
 import json
 import os
 import signal
-from threading import Thread
 import time
+from threading import Thread
 
 import mysql.connector
 import pika
@@ -23,6 +29,7 @@ DB_CONFIG = {
     "database": os.environ.get("DB_NAME", "cs302DB"),
 }
 
+
 # Light retry wrapper to avoid transient startup races
 def _mysql_connect_with_retries(retries: int = 10, delay: float = 0.5):
     last_err = None
@@ -34,20 +41,38 @@ def _mysql_connect_with_retries(retries: int = 10, delay: float = 0.5):
             time.sleep(delay)
     raise last_err
 
+
 # Flag to control the consumer loop
 should_stop = False
 
+
 def signal_handler(sig, frame):
+    """Handle termination signals to gracefully shut down the consumer.
+
+    This function is called when the process receives a termination signal (e.g., SIGINT).
+    It sets the global `should_stop` flag to True, which allows the consumer loop
+    to exit cleanly.
+
+    Args:
+        sig: The signal number.
+        frame: The current stack frame (unused).
+    """
     global should_stop
     print("Stopping consumer...")
     should_stop = True
+
 
 # Register signal handlers
 signal.signal(signal.SIGINT, signal_handler)
 signal.signal(signal.SIGTERM, signal_handler)
 
-INSURANCE_API_URL = (os.environ.get("insurance_service_url_internal", "http://insurance:5200").rstrip("/") +
-                     "/insurance/verify")
+INSURANCE_API_URL = (
+    os.environ.get("insurance_service_url_internal", "http://insurance:5200").rstrip(
+        "/"
+    )
+    + "/insurance/verify"
+)
+
 
 def callback(ch, method, properties, body):
     """Process billing initiation message."""
@@ -74,7 +99,9 @@ def callback(ch, method, properties, body):
         )
         cnx.commit()
         billing_id = cursor.lastrowid
-        print(f"SUCCESS: Created billings {billing_id} for patient {patient_id}, amount {amount}")
+        print(
+            f"SUCCESS: Created billings {billing_id} for patient {patient_id}, amount {amount}"
+        )
 
         # --- Insurance verification
         v = verify_insurance(incident_id, patient_id, amount)
@@ -111,7 +138,9 @@ def callback(ch, method, properties, body):
                     description=f"Billing for incident {incident_id}",
                 )
                 billing_status = "PAID"
-                print(f"SUCCESS: Payment processed for billings {billing_id}, reference: {payment_reference}")
+                print(
+                    f"SUCCESS: Payment processed for billings {billing_id}, reference: {payment_reference}"
+                )
 
                 # Publish payment completion event
                 status_msg = {
@@ -167,10 +196,14 @@ def callback(ch, method, properties, body):
                 }
                 amqp.publish_status_update(status_msg, is_success=False)
             except Exception as notify_err:
-                print(f"WARNING: Failed to send insurance failure notification: {notify_err}")
+                print(
+                    f"WARNING: Failed to send insurance failure notification: {notify_err}"
+                )
 
         # --- Persist final status to DB
-        update_billing_status(billing_id, insurance_verified, payment_reference, billing_status)
+        update_billing_status(
+            billing_id, insurance_verified, payment_reference, billing_status
+        )
 
     except Exception as e:
         print(f"FAIL: Unexpected error: {str(e)}")
@@ -181,6 +214,7 @@ def callback(ch, method, properties, body):
         finally:
             if cnx and cnx.is_connected():
                 cnx.close()
+
 
 def update_billing_status(id, insurance_verified, payment_reference, status):
     """Update billing record with verification and payment status, then return. No consumer loops here."""
@@ -208,15 +242,26 @@ def update_billing_status(id, insurance_verified, payment_reference, status):
             cursor.close()
             cnx.close()
 
+
 def verify_insurance(incident_id, patient_id, amount=None):
-    """
-    Call insurance service and return a structured result:
-    {
-      "verified": bool,
-      "reason": "OK|NO_POLICY|INSUFFICIENT_COVERAGE|SERVICE_UNAVAILABLE|SERVICE_ERROR",
-      "message": str,
-      "http_status": int|None
-    }
+    """Verify insurance coverage for a patient's incident.
+
+    Makes an HTTP request to the insurance service to verify coverage for the
+    specified patient and incident. Handles various error cases and returns
+    a structured response.
+
+    Args:
+        incident_id: Unique identifier for the medical incident.
+        patient_id: Unique identifier for the patient.
+        amount: Optional amount in cents to verify coverage for.
+
+    Returns:
+        dict: A dictionary containing:
+            - verified (bool): Whether insurance verification was successful
+            - reason (str): One of: OK, NO_POLICY, INSUFFICIENT_COVERAGE,
+                          SERVICE_UNAVAILABLE, or SERVICE_ERROR
+            - message (str): Human-readable status message
+            - http_status (int|None): HTTP status code from the insurance service
     """
     import requests
 
@@ -324,6 +369,7 @@ def verify_insurance(incident_id, patient_id, amount=None):
             "http_status": None,
         }
 
+
 def process_payment(patient_id, amount, description):
     """Process payment using Stripe. Amount is in cents."""
     from stripe_service import process_stripe_payment
@@ -345,6 +391,7 @@ def process_payment(patient_id, amount, description):
     except Exception as e:
         print(f"Error in process_payment: {str(e)}")
         raise
+
 
 def consume():
     """Start the RabbitMQ consumer."""
@@ -391,17 +438,20 @@ def consume():
 # Initialize Flask app
 app = Flask(__name__)
 
+
 @app.route("/health")
 def health_check():
-    """Health check endpoint to verify service is running."""
+    """Health check endpoint to verify service is running.
+
+    Returns:
+        tuple: A JSON response with service status and a status code.
+    """
     status = {"status": "healthy", "service": "billings", "version": "1.0.0"}
     status_code = 200
 
     # Check database connection
     try:
-        cnx = mysql.connector.connect(
-            **{**DB_CONFIG, "connection_timeout": 5}
-        )
+        cnx = mysql.connector.connect(**{**DB_CONFIG, "connection_timeout": 5})
         cursor = cnx.cursor()
         cursor.execute("SELECT 1")
         result = cursor.fetchone()
@@ -420,12 +470,14 @@ def health_check():
     status["timestamp"] = datetime.datetime.utcnow().isoformat()
     return jsonify(status), status_code
 
+
 def run_flask_app():
     """Run the Flask app in a separate thread."""
     port = int(os.environ.get("PORT", "5100"))
     print(f"Starting Flask server on port {port}")
     # nosemgrep: python.flask.security.audit.app-run-param-config.avoid_app_run_with_bad_host
     app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
+
 
 if __name__ == "__main__":
     print("Starting billings service...")
