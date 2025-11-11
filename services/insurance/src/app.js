@@ -1,6 +1,6 @@
 require("dotenv").config();
 const express = require("express");
-const cors = require("cors");
+// const cors = require("cors");
 const mysql = require("mysql2/promise");
 const os = require("os");
 
@@ -9,7 +9,7 @@ const port = 5200;
 console.log(`Starting insurance service on port ${port}`);
 
 // Middleware
-app.use(cors());
+// app.use(cors());
 app.use(express.json());
 
 // Database configuration
