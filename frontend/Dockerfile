@@ -10,6 +10,13 @@ USER nginx
 COPY dashboard.html /usr/share/nginx/html/
 COPY index.html /usr/share/nginx/html/
 
+# Create startup script
+RUN echo '#!/bin/sh' > /startup.sh && \
+    echo 'echo "API_GATEWAY_URL: $API_GATEWAY_URL"' >> /startup.sh && \
+    echo 'envsubst "\$API_GATEWAY_URL" < /usr/share/nginx/html/dashboard.html.template > /usr/share/nginx/html/dashboard.html' >> /startup.sh && \
+    echo 'nginx -g "daemon off;"' >> /startup.sh && \
+    chmod +x /startup.sh
+
 # Create custom nginx config for port 3000
 USER root
 RUN echo 'server { \

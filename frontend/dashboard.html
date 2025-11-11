@@ -659,10 +659,9 @@
 
     <script>
         // Dynamic API base URL - uses current hostname with api-gateway port
-        // const API_HOST = 'api-gateway';
-        // const API_PORT = '30080'; // api-gateway NodePort
-        const API_BASE = `http://api-gateway:30080/api/v1`;
-        const SSE_ENDPOINT = `http://api-gateway:30080/api/v1/events`;
+        const API_GATEWAY_URL = '${API_GATEWAY_URL}' || 'http://localhost:30080';
+        const API_BASE = `${API_GATEWAY_URL}/api/v1`;
+        const SSE_ENDPOINT = `${API_GATEWAY_URL}/api/v1/events`;
         
         let eventSource = null;
         let sseConnected = false;
