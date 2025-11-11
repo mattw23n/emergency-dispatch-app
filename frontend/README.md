@@ -150,6 +150,22 @@ docker-compose logs -f events-manager
 
 ## Architecture Overview
 
+**Important:** The frontend is **served by the API Gateway**, not as a separate service.
+
+### Development (Docker Compose):
+```
+Browser → http://localhost:8080 → API Gateway → Frontend files (volume mounted)
+                                  → /api/v1/* → Backend services
+```
+
+### Production (Kubernetes):
+```
+Browser → Ingress/NodePort → API Gateway → Frontend files (baked into image)
+                              → /api/v1/* → Backend services
+```
+
+Access: `http://cs302-g2t5.local` or `http://node-ip:30080`
+
 ```
 ┌──────────────────────────────────────────────────┐
 │           Browser (localhost:8080)               │
