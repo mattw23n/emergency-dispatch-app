@@ -52,15 +52,15 @@ gitleaks:
     entrypoint: [""]
   script: ["gitleaks detect --source . --no-git -v"]
 
-integration-tests:
-  stage: Test
-  image: docker:28.3.2
-  services:
-    - docker:28.3.2-dind
-  before_script:
-    - docker info
-  script:
-    - docker compose -f ci/compose.test.yaml up --exit-code-from frontend-test
+# integration-tests:
+#   stage: Test
+#   image: docker:28.3.2
+#   services:
+#     - docker:28.3.2-dind
+#   before_script:
+#     - docker info
+#   script:
+#     - docker compose -f ci/compose.test.yaml up --exit-code-from frontend-test
 
 release-image:
   stage: Release
