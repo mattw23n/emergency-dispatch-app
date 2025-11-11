@@ -1,13 +1,17 @@
 # Use nginx to serve static frontend files
-FROM nginx:alpine
+FROM nginxinc/nginx-unprivileged:alpine
 
 # Install curl for health checks
+USER root
 RUN apk add --no-cache curl
+USER nginx
 
 # Copy all frontend files to nginx html directory
 COPY dashboard.html /usr/share/nginx/html/
 COPY index.html /usr/share/nginx/html/
+
 # Create custom nginx config for port 3000
+USER root
 RUN echo 'server { \
     listen 3000; \
     server_name localhost; \
@@ -22,16 +26,9 @@ RUN echo 'server { \
         add_header Content-Type text/plain; \
     } \
 }' > /etc/nginx/conf.d/default.conf
-
-RUN chown -R nginx:nginx /var/cache/nginx /var/run /var/log/nginx && \
-    chmod -R 755 /var/cache/nginx && \
-    chmod -R 755 /var/run && \
-    chmod -R 755 /var/log/nginx
+USER nginx
 
 EXPOSE 3000
-
-# Run nginx as non-root user
-USER nginx
 
 # Start nginx in foreground
 CMD ["nginx", "-g", "daemon off;"]
