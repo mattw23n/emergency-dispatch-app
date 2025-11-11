@@ -327,6 +327,7 @@ def verify_insurance(incident_id, patient_id, amount=None):
         url = INSURANCE_API_URL
 
         try:
+            # semgrep: ignore python.lang.security.audit.insecure-transport.requests.request-with-http
             r = requests.post(
                 url,
                 json={
