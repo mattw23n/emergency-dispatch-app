@@ -8,6 +8,7 @@ USER nginx
 
 # Copy all frontend files to nginx html directory
 COPY dashboard.html /usr/share/nginx/html/dashboard.html.template
+COPY dashboard.html /usr/share/nginx/html/dashboard.html
 COPY index.html /usr/share/nginx/html/
 
 # Create custom nginx config for port 3000
