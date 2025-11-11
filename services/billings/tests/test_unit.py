@@ -200,12 +200,15 @@ def test_callback_success_paid(
         },
     )
 
-    # Stripe returns success via fake module (already provided in conftest)
-    fake_stripe_module.process_stripe_payment = lambda **kw: {
-        "success": True,
-        "payment_intent_id": "pi_test_OK",
-        "client_secret": "cs",
-    }
+    # FIXED: Patch stripe_service module directly
+    monkeypatch.setattr(
+        "stripe_service.process_stripe_payment",
+        lambda **kw: {
+            "success": True,
+            "payment_intent_id": "pi_test_OK",
+            "client_secret": "cs",
+        },
+    )
 
     # Call the callback directly
     billings_app.callback(ch=None, method=None, properties=None, body=_initiate_msg())
@@ -278,16 +281,16 @@ def test_callback_payment_declined(
         },
     )
 
-    # Stripe fails like "card was declined"
-    def _decline(**kw):
-        return {
+    # FIXED: Patch stripe_service module directly
+    monkeypatch.setattr(
+        "stripe_service.process_stripe_payment",
+        lambda **kw: {
             "success": False,
             "error": "Your card was declined",
             "payment_intent_id": None,
             "client_secret": None,
-        }
-
-    fake_stripe_module.process_stripe_payment = _decline
+        },
+    )
 
     billings_app.callback(ch=None, method=None, properties=None, body=_initiate_msg())
 

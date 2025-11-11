@@ -17,7 +17,7 @@ import pika
 from flask import Flask, jsonify
 
 import amqp_setup
-from stripe_service import process_stripe_payment, refund_payment
+import stripe_service
 
 # Create a singleton AMQP helper
 amqp = amqp_setup.AMQPSetup()
@@ -103,7 +103,7 @@ def rollback_billing(
     # (1) Refund payment if it was processed
     if payment_reference:
         try:
-            result = refund_payment(payment_reference)
+            result = stripe_service.refund_payment(payment_reference)
             if result["success"]:
                 print(f"✓ Rollback: Refunded payment {payment_reference}")
                 rollback_results.append(("Payment Refund", True))
@@ -229,7 +229,10 @@ def callback(ch, method, properties, body):
                     amount=amount,
                     failure_reason=f"Insurance verification failed: {reason_msg}",
                 )
+                # Ensure we don't proceed with payment processing
                 return
+
+            insurance_verified = True  # Set to True only if we pass verification
 
             print(f"SUCCESS: Insurance verified for billing {billing_id}")
 
@@ -370,7 +373,7 @@ def compensate_payment(billing_id, payment_reference):
     """Compensate a completed payment: refund Stripe and mark billing VOIDED."""
     try:
         if payment_reference:
-            result = refund_payment(payment_reference)
+            result = stripe_service.refund_payment(payment_reference)
             if result["success"]:
                 print(
                     f"SUCCESS: Refunded Stripe payment for billing {billing_id}, refund_id: {result['refund_id']}"
@@ -560,7 +563,9 @@ def process_payment(patient_id, amount, description):
         amount_dollars = float(amount) / 100
 
         # Call Stripe service to process payment
-        result = process_stripe_payment(amount=amount_dollars, description=description)
+        result = stripe_service.process_stripe_payment(
+            amount=amount_dollars, description=description
+        )
 
         if result["success"]:
             return {
