@@ -30,29 +30,27 @@ spec:
     spec:
       containers:
         - name: frontend
-          image: registry.gitlab.com/cs302-2025/g2-team5/frontend/main:47aa89fa4e81815020a88a0e552a0a5e51d327ef
+          image: registry.gitlab.com/cs302-2025/g2-team5/frontend/main:1599d0810b52673baa581e8fe74be4e91e1a69ce
           imagePullPolicy: Always
           ports:
             - containerPort: 3000
           env:
             - name: API_GATEWAY_URL
               valueFrom:
-                  configMapKeyRef:
-                    name: frontend-config
-                    key: API_GATEWAY_URL
-          # livenessProbe:
-          #   httpGet:
-          #     path: /
-          #     port: 3000
-          #   initialDelaySeconds: 10
-          #   periodSeconds: 10
-          # readinessProbe:
-          #   httpGet:
-          #     path: /
-          #     port: 3000
-          #   initialDelaySeconds: 5
-          #   periodSeconds: 5
+                configMapKeyRef:
+                  name: frontend-config
+                  key: API_GATEWAY_URL
+                  # livenessProbe:
+                  #   httpGet:
+                  #     path: /
+                  #     port: 3000
+                  #   initialDelaySeconds: 10
+                  #   periodSeconds: 10
+                  # readinessProbe:
+                  #   httpGet:
+                  #     path: /
+                  #     port: 3000
+                  #   initialDelaySeconds: 5
+                  #   periodSeconds: 5
       imagePullSecrets:
         - name: gitlab-registry-access-g2t5
-
-
