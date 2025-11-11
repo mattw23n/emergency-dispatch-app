@@ -134,14 +134,38 @@ smoke-test-image:
     - docker ps | grep wearable-test || (echo "Wearable container crashed!" && docker logs wearable-test && exit 1)
     - docker ps | grep rabbitmq-test || (echo "RabbitMQ container crashed!" && docker logs rabbitmq-test && exit 1)
     
-    # Test health endpoint - should return 200 (connected to RabbitMQ)
+    # Show wearable logs to see if Flask started
+    - echo "=== Wearable startup logs ==="
+    - docker logs wearable-test 2>&1 | tail -30
+    
+    # Wait a bit more for Flask to be fully ready
+    - echo "Waiting additional time for Flask to be ready..."
+    - sleep 10
+    
+    # Test health endpoint with retries - should return 200 (connected to RabbitMQ)
     - |
-      HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:5000/health)
-      echo "Health endpoint returned HTTP $HTTP_CODE"
-      if [ "$HTTP_CODE" = "200" ]; then
-        echo "✓ Health check passed - service is fully operational"
-      else
-        echo "✗ Health check failed with HTTP $HTTP_CODE"
+      MAX_RETRIES=5
+      RETRY_COUNT=0
+      HTTP_CODE=0
+      
+      while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+        HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:5000/health || echo "000")
+        echo "Health check attempt $((RETRY_COUNT + 1))/$MAX_RETRIES: HTTP $HTTP_CODE"
+        
+        if [ "$HTTP_CODE" = "200" ]; then
+          echo "✓ Health check passed - service is fully operational"
+          break
+        fi
+        
+        RETRY_COUNT=$((RETRY_COUNT + 1))
+        if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
+          echo "Retrying in 5 seconds..."
+          sleep 5
+        fi
+      done
+      
+      if [ "$HTTP_CODE" != "200" ]; then
+        echo "✗ Health check failed after $MAX_RETRIES attempts with HTTP $HTTP_CODE"
         echo "=== Wearable logs ==="
         docker logs wearable-test
         echo "=== RabbitMQ logs ==="
