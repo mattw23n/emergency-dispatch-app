@@ -29,7 +29,7 @@ spec:
     spec:
       containers:
         - name: notification
-          image: registry.gitlab.com/cs302-2025/g2-team5/services/notification/main:528978c6856bcdf0a2f3580298084aa6e4db0d47
+          image: registry.gitlab.com/cs302-2025/g2-team5/services/notification/main:71098cdd645e0d05cd4c2eb5a63e01f49a19b536
           imagePullPolicy: Always
           ports:
             - containerPort: 8000
