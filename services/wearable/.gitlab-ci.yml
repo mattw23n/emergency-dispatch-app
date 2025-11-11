@@ -121,6 +121,9 @@ smoke-test-image:
         -e RABBITMQ_PORT=5672 \
         -e RABBITMQ_USER=guest \
         -e RABBITMQ_PASSWORD=guest \
+        -e RABBITMQ_VHOST=/ \
+        -e AMQP_EXCHANGE_NAME=amqp.topic \
+        -e AMQP_EXCHANGE_TYPE=topic \
         "$CI_REGISTRY_IMAGE/$CI_COMMIT_BRANCH:$CI_COMMIT_SHA"
     
     # Wait for Flask app to start and connect to RabbitMQ
