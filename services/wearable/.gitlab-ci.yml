@@ -149,8 +149,8 @@ smoke-test-image:
       HTTP_CODE=0
       
       while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
-        # Use docker exec to curl from inside the network
-        HTTP_CODE=$(docker exec wearable-test curl -s -o /dev/null -w "%{http_code}" http://localhost:5000/health || echo "000")
+        # Use docker exec with Python's urllib (no curl needed)
+        HTTP_CODE=$(docker exec wearable-test python -c "import urllib.request; response = urllib.request.urlopen('http://localhost:5000/health', timeout=5); print(response.status)" 2>/dev/null || echo "000")
         echo "Health check attempt $((RETRY_COUNT + 1))/$MAX_RETRIES: HTTP $HTTP_CODE"
         
         if [ "$HTTP_CODE" = "200" ]; then
@@ -176,7 +176,7 @@ smoke-test-image:
     
     # Verify the response shows RabbitMQ connected
     - |
-      HEALTH_RESPONSE=$(docker exec wearable-test curl -s http://localhost:5000/health)
+      HEALTH_RESPONSE=$(docker exec wearable-test python -c "import urllib.request, json; response = urllib.request.urlopen('http://localhost:5000/health', timeout=5); print(response.read().decode())" 2>/dev/null)
       echo "Health response: $HEALTH_RESPONSE"
       echo "$HEALTH_RESPONSE" | grep -q '"rabbitmq_connected": true' || (echo "RabbitMQ not connected!" && exit 1)
       echo "✓ RabbitMQ connection confirmed"
@@ -185,7 +185,7 @@ smoke-test-image:
     - echo "Checking if messages are being sent..."
     - sleep 5
     - |
-      HEALTH_RESPONSE=$(docker exec wearable-test curl -s http://localhost:5000/health)
+      HEALTH_RESPONSE=$(docker exec wearable-test python -c "import urllib.request; response = urllib.request.urlopen('http://localhost:5000/health', timeout=5); print(response.read().decode())" 2>/dev/null)
       echo "$HEALTH_RESPONSE" | grep -q '"messages_sent"' && echo "✓ Message publishing is working"
     
     # Show logs for verification
