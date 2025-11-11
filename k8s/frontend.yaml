@@ -8,8 +8,8 @@ spec:
     app: frontend
   ports:
     - protocol: TCP
-      port: 80
-      targetPort: 8080
+      port: 3000
+      targetPort: 3000
       nodePort: 30081
 ---
 apiVersion: apps/v1
@@ -19,7 +19,7 @@ metadata:
   labels:
     app: frontend
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       app: frontend
@@ -33,17 +33,17 @@ spec:
           image: registry.gitlab.com/cs302-2025/g2-team5/frontend/main:91c9ec1649017134b9c341bf98644e0d59c5062d
           imagePullPolicy: Always
           ports:
-            - containerPort: 8080
+            - containerPort: 3000
           livenessProbe:
             httpGet:
               path: /
-              port: 8080
+              port: 3000
             initialDelaySeconds: 10
             periodSeconds: 10
           readinessProbe:
             httpGet:
               path: /
-              port: 8080
+              port: 3000
             initialDelaySeconds: 5
             periodSeconds: 5
       imagePullSecrets:
