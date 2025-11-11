@@ -76,150 +76,273 @@ INSURANCE_API_URL = (
 )
 
 
+def rollback_billing(
+    billing_id,
+    payment_reference,
+    insurance_verified,
+    incident_id,
+    patient_id,
+    amount,
+    failure_reason,
+):
+    """
+    Rollback all completed billing actions if an error occurs.
+    This follows the same pattern as rollback_orders in place_order service.
+
+    Args:
+        billing_id: ID of the billing record to rollback
+        payment_reference: Stripe payment reference to refund
+        insurance_verified: Whether insurance was verified
+        incident_id: Incident ID for event notification
+        patient_id: Patient ID for event notification
+        amount: Amount that was charged
+        failure_reason: Reason for the rollback
+    """
+    rollback_results = []
+
+    # (1) Refund payment if it was processed
+    if payment_reference:
+        try:
+            result = refund_payment(payment_reference)
+            if result["success"]:
+                print(f"✓ Rollback: Refunded payment {payment_reference}")
+                rollback_results.append(("Payment Refund", True))
+            else:
+                print(
+                    f"✗ Rollback: Failed to refund payment {payment_reference}: {result['error']}"
+                )
+                rollback_results.append(("Payment Refund", False))
+        except Exception as e:
+            print(f"✗ Rollback: Exception refunding payment {payment_reference}: {e}")
+            rollback_results.append(("Payment Refund", False))
+
+    # (2) Mark billing as failed/cancelled in database
+    if billing_id:
+        try:
+            update_billing_status(
+                billing_id,
+                insurance_verified=False,
+                payment_reference=None,
+                status="CANCELLED",
+            )
+            print(f"✓ Rollback: Marked billing {billing_id} as CANCELLED")
+            rollback_results.append(("Billing Status", True))
+        except Exception as e:
+            print(f"✗ Rollback: Failed to update billing {billing_id} status: {e}")
+            rollback_results.append(("Billing Status", False))
+
+    # (3) Send failure notification event
+    if billing_id and incident_id and patient_id:
+        try:
+            failure_msg = {
+                "billing_id": billing_id,
+                "incident_id": incident_id,
+                "patient_id": patient_id,
+                "amount": amount,
+                "status": "CANCELLED",
+                "error": failure_reason,
+                "timestamp": datetime.datetime.utcnow().isoformat(),
+            }
+            amqp.publish_status_update(failure_msg, is_success=False)
+            print(
+                f"✓ Rollback: Published failure notification for billing {billing_id}"
+            )
+            rollback_results.append(("Failure Notification", True))
+        except Exception as e:
+            print(f"✗ Rollback: Failed to publish failure notification: {e}")
+            rollback_results.append(("Failure Notification", False))
+
+    # Log rollback summary
+    print(f"\n{'=' * 60}")
+    print(f"ROLLBACK SUMMARY for billing {billing_id}")
+    print(f"Reason: {failure_reason}")
+    for action, success in rollback_results:
+        status = "✓" if success else "✗"
+        print(f"  {status} {action}")
+    print(f"{'=' * 60}\n")
+
+
 def callback(ch, method, properties, body):
-    """Process billing initiation message."""
+    """
+    Process billing initiation message.
+    """
     cnx = None
     cursor = None
     billing_id = None
+    payment_reference = None
+    insurance_verified = False
+
     try:
-        # Parse message
         body_str = body.decode("utf-8").strip().rstrip(";").strip()
         message_body = json.loads(body_str)
         incident_id = message_body["incident_id"]
         patient_id = message_body["patient_id"]
         amount = message_body.get("amount", 100)
 
-        # Insert billing record
-        cnx = _mysql_connect_with_retries()
-        cursor = cnx.cursor()
-        cursor.execute(
-            """
-            INSERT INTO billings (incident_id, patient_id, amount)
-            VALUES (%s, %s, %s)
-            """,
-            (incident_id, patient_id, amount),
-        )
-        cnx.commit()
-        billing_id = cursor.lastrowid
-        print(
-            f"SUCCESS: Created billings {billing_id} for patient {patient_id}, amount {amount}"
-        )
-
-        # --- Insurance verification
-        v = verify_insurance(incident_id, patient_id, amount)
-
-        if isinstance(v, dict):
-            insurance_verified = bool(v.get("verified"))
-            reason = v.get("reason")
-            reason_msg = v.get("message")
-            http_status = v.get("http_status")
-        else:
-            insurance_verified = bool(v)
-            reason = "OK" if insurance_verified else "SERVICE_ERROR"
-            reason_msg = None
-            http_status = None
-
-        status_map = {
-            "OK": "VERIFIED",
-            "NO_POLICY": "INSURANCE_NOT_FOUND",
-            "INSUFFICIENT_COVERAGE": "INSURANCE_INSUFFICIENT_COVERAGE",
-            "SERVICE_UNAVAILABLE": "INSURANCE_SERVICE_UNAVAILABLE",
-            "SERVICE_ERROR": "INSURANCE_VERIFICATION_FAILED",
-        }
-        billing_status = status_map.get(reason, "INSURANCE_VERIFICATION_FAILED")
-
-        # --- Payment (only if verified)
-        payment_reference = None
-        if insurance_verified:
-            try:
-                amount_in_cents = int(float(amount) * 100)
-                payment_reference = process_payment(
-                    patient_id=patient_id,
-                    amount=amount_in_cents,
-                    description=f"Billing for incident {incident_id}",
-                )
-                billing_status = "PAID"
-                print(
-                    f"SUCCESS: Payment processed for billings {billing_id}, reference: {payment_reference}"
-                )
-
-                # Publish payment completion event
-                status_msg = {
-                    "billing_id": billing_id,
-                    "incident_id": incident_id,
-                    "patient_id": patient_id,
-                    "amount": amount,
-                    "status": "COMPLETED",
-                    "payment_reference": payment_reference,
-                    "timestamp": datetime.datetime.utcnow().isoformat(),
-                }
-                amqp.publish_status_update(status_msg, is_success=True)
-
-            except Exception as e:
-                error_msg = str(e)
-                print(f"FAIL: Payment processing failed: {error_msg}")
-                billing_status = (
-                    "PAYMENT_DECLINED"
-                    if "card was declined" in error_msg.lower()
-                    else "PAYMENT_FAILED"
-                )
-
-                # Publish payment failure event
-                try:
-                    status_msg = {
-                        "billing_id": billing_id,
-                        "incident_id": incident_id,
-                        "patient_id": patient_id,
-                        "amount": amount,
-                        "status": billing_status,
-                        "error": error_msg,
-                        "timestamp": datetime.datetime.utcnow().isoformat(),
-                    }
-                    amqp.publish_status_update(status_msg, is_success=False)
-                except Exception as notify_err:
-                    print(f"WARNING: Failed to send failure notification: {notify_err}")
-        else:
-            print(
-                f"INFO: Insurance verification failed for billings {billing_id}: "
-                f"{reason} ({http_status}) - {reason_msg}"
+        # ==========================================
+        # STEP 1: Create Billing Record
+        # ==========================================
+        try:
+            cnx = _mysql_connect_with_retries()
+            cursor = cnx.cursor()
+            cursor.execute(
+                """
+                INSERT INTO billings (incident_id, patient_id, amount, status)
+                VALUES (%s, %s, %s, 'PENDING')
+                """,
+                (incident_id, patient_id, amount),
             )
-            try:
-                status_msg = {
-                    "billing_id": billing_id,
-                    "incident_id": incident_id,
-                    "patient_id": patient_id,
-                    "amount": amount,
-                    "status": billing_status,
-                    "error": reason_msg,
-                    "details": {"reason": reason, "http_status": http_status},
-                    "timestamp": datetime.datetime.utcnow().isoformat(),
-                }
-                amqp.publish_status_update(status_msg, is_success=False)
-            except Exception as notify_err:
-                print(
-                    f"WARNING: Failed to send insurance failure notification: {notify_err}"
-                )
+            cnx.commit()
+            billing_id = cursor.lastrowid
+            print(
+                f"SUCCESS: Created billing {billing_id} for patient {patient_id}, amount {amount}"
+            )
+        except Exception as e:
+            print(f"FAIL: Failed to create billing record: {e}")
+            # No rollback needed - nothing was created
+            return
 
-        # --- Persist final status to DB
+        # ==========================================
+        # STEP 2: Verify Insurance
+        # ==========================================
+        try:
+            v = verify_insurance(incident_id, patient_id, amount)
+
+            if isinstance(v, dict):
+                insurance_verified = bool(v.get("verified"))
+                reason = v.get("reason")
+                reason_msg = v.get("message")
+
+            else:
+                insurance_verified = bool(v)
+                reason = "OK" if insurance_verified else "SERVICE_ERROR"
+                reason_msg = None
+
+            if not insurance_verified:
+                print(f"FAIL: Insurance verification failed: {reason} - {reason_msg}")
+                rollback_billing(
+                    billing_id=billing_id,
+                    incident_id=incident_id,
+                    patient_id=patient_id,
+                    amount=amount,
+                    failure_reason=f"Insurance verification failed: {reason_msg}",
+                )
+                return
+
+            print(f"SUCCESS: Insurance verified for billing {billing_id}")
+
+        except Exception as e:
+            print(f"FAIL: Insurance verification error: {e}")
+            rollback_billing(
+                billing_id=billing_id,
+                incident_id=incident_id,
+                patient_id=patient_id,
+                amount=amount,
+                failure_reason=f"Insurance verification error: {str(e)}",
+            )
+            return
+
+        # ==========================================
+        # STEP 3: Process Payment
+        # ==========================================
+
+        try:
+            amount_in_cents = int(float(amount) * 100)
+            payment_reference = process_payment(
+                patient_id=patient_id,
+                amount=amount_in_cents,
+                description=f"Billing for incident {incident_id}",
+            )
+            print(
+                f"SUCCESS: Payment processed for billing {billing_id}, reference: {payment_reference}"
+            )
+            simulate_failure = message_body.get("simulate_failure")
+
+            if simulate_failure == "payment":
+                raise Exception("Simulated payment failure")
+
+        except Exception as e:
+            error_msg = str(e)
+            print(f"FAIL: Payment processing failed: {error_msg}")
+            rollback_billing(
+                billing_id=billing_id,
+                payment_reference=None,  # Payment didn't succeed
+                insurance_verified=insurance_verified,
+                incident_id=incident_id,
+                patient_id=patient_id,
+                amount=amount,
+                failure_reason=f"Payment failed: {error_msg}",
+            )
+            return
+
+        # ==========================================
+        # STEP 4: Update Billing Status to PAID
+        # ==========================================
         try:
             update_billing_status(
-                billing_id, insurance_verified, payment_reference, billing_status
+                billing_id,
+                insurance_verified=True,
+                payment_reference=payment_reference,
+                status="PAID",
             )
-        except Exception as db_err:
-            print(f"[ERROR] Billing DB update failed after payment: {db_err}")
-            # Payment succeeded but DB update failed → trigger compensation
-            compensate_payment(billing_id, payment_reference)
-            return  # stop further processing
+            print(f"SUCCESS: Updated billing {billing_id} status to PAID")
+
+        except Exception as e:
+            print(f"FAIL: Failed to update billing status: {e}")
+            # Payment succeeded but DB update failed
+            rollback_billing(
+                billing_id=billing_id,
+                payment_reference=payment_reference,
+                insurance_verified=insurance_verified,
+                incident_id=incident_id,
+                patient_id=patient_id,
+                amount=amount,
+                failure_reason=f"Database update failed after payment: {str(e)}",
+            )
+            return
+
+        # ==========================================
+        # STEP 5: Publish Success Event
+        # ==========================================
+        try:
+            status_msg = {
+                "billing_id": billing_id,
+                "incident_id": incident_id,
+                "patient_id": patient_id,
+                "amount": amount,
+                "status": "COMPLETED",
+                "payment_reference": payment_reference,
+                "timestamp": datetime.datetime.utcnow().isoformat(),
+            }
+            amqp.publish_status_update(status_msg, is_success=True)
+            print(f"SUCCESS: Published completion event for billing {billing_id}")
+
+        except Exception as e:
+            print(f"WARNING: Failed to publish success event: {e}")
+            print(
+                f"INFO: Billing {billing_id} is PAID but downstream notification failed"
+            )
+
+        print(f"SUCCESS: Billing saga completed for billing {billing_id}")
 
     except Exception as e:
-        print(f"FAIL: Unexpected error: {str(e)}")
+        print(f"FAIL: Unexpected error in billing saga: {e}")
+        # Rollback whatever we can
+        if billing_id:
+            rollback_billing(
+                billing_id=billing_id,
+                payment_reference=payment_reference,
+                insurance_verified=insurance_verified,
+                incident_id=message_body.get("incident_id"),
+                patient_id=message_body.get("patient_id"),
+                amount=message_body.get("amount", 100),
+                failure_reason=f"Unexpected error: {str(e)}",
+            )
     finally:
-        try:
-            if cursor:
-                cursor.close()
-        finally:
-            if cnx and cnx.is_connected():
-                cnx.close()
+        if cursor:
+            cursor.close()
+        if cnx and cnx.is_connected():
+            cnx.close()
 
 
 def compensate_payment(billing_id, payment_reference):
