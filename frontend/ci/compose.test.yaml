@@ -1,0 +1,35 @@
+services:
+  ##################################
+  # Frontend Service (nginx)
+  ##################################
+  frontend:
+    build:
+      context: ../
+      dockerfile: Dockerfile
+    ports:
+      - "80:80"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost/"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  ##################################
+  # Frontend Tests
+  ##################################
+  frontend-test:
+    image: node:18-alpine
+    depends_on:
+      frontend:
+        condition: service_healthy
+    working_dir: /tests
+    volumes:
+      - ../:/tests
+    environment:
+      - FRONTEND_URL=http://frontend
+    command: |
+      sh -c "
+        npm install -g html-validate &&
+        html-validate *.html &&
+        echo 'All tests passed!'
+      "
