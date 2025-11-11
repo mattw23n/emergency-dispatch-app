@@ -30,7 +30,7 @@ spec:
     spec:
       containers:
         - name: api-gateway
-          image: registry.gitlab.com/cs302-2025/g2-team5/api-gateway/main:cf993a5bf2fa6ed4748cabba3e68a1ecd019f0ec
+          image: registry.gitlab.com/cs302-2025/g2-team5/api-gateway/main:ac62111021283bcc224d861840a423a48f0f0864
           imagePullPolicy: Always
           ports:
             - containerPort: 80

@@ -29,7 +29,7 @@ spec:
     spec:
       containers:
         - name: insurance
-          image: registry.gitlab.com/cs302-2025/g2-team5/services/insurance/main:62e6322410d8da6d32b6c9bc643c63e7393092fa
+          image: registry.gitlab.com/cs302-2025/g2-team5/services/insurance/main:d557becc87d6843aec1c5b96063c7f8acef38a42
           imagePullPolicy: Always
           ports:
             - containerPort: 5200
