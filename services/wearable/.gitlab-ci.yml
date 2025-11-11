@@ -178,7 +178,7 @@ smoke-test-image:
     - |
       HEALTH_RESPONSE=$(docker exec wearable-test python -c "import urllib.request, json; response = urllib.request.urlopen('http://localhost:5000/health', timeout=5); print(response.read().decode())" 2>/dev/null)
       echo "Health response: $HEALTH_RESPONSE"
-      echo "$HEALTH_RESPONSE" | grep -q '"rabbitmq_connected": true' || (echo "RabbitMQ not connected!" && exit 1)
+      echo "$HEALTH_RESPONSE" | grep -q '"rabbitmq_connected":[[:space:]]*true' || (echo "RabbitMQ not connected!" && exit 1)
       echo "✓ RabbitMQ connection confirmed"
     
     # Test that wearable is publishing messages
