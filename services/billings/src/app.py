@@ -252,18 +252,34 @@ def callback(ch, method, properties, body):
 
         try:
             amount_in_cents = int(float(amount) * 100)
-            payment_reference = process_payment(
+            payment_result = process_payment(
                 patient_id=patient_id,
                 amount=amount_in_cents,
                 description=f"Billing for incident {incident_id}",
             )
+
+            if not payment_result["success"]:
+                error_msg = payment_result.get("error", "Payment failed")
+                print(f"FAIL: Payment processing failed: {error_msg}")
+                rollback_billing(
+                    billing_id=billing_id,
+                    payment_reference=None,
+                    insurance_verified=insurance_verified,
+                    incident_id=incident_id,
+                    patient_id=patient_id,
+                    amount=amount,
+                    failure_reason=f"Payment failed: {error_msg}",
+                )
+                return
+
+            payment_reference = payment_result["payment_intent_id"]
             print(
                 f"SUCCESS: Payment processed for billing {billing_id}, reference: {payment_reference}"
             )
 
         except Exception as e:
             error_msg = str(e)
-            print(f"FAIL: Payment processing failed: {error_msg}")
+            print(f"FAIL: Payment processing error: {error_msg}")
             rollback_billing(
                 billing_id=billing_id,
                 payment_reference=None,  # Payment didn't succeed
@@ -271,7 +287,7 @@ def callback(ch, method, properties, body):
                 incident_id=incident_id,
                 patient_id=patient_id,
                 amount=amount,
-                failure_reason=f"Payment failed: {error_msg}",
+                failure_reason=f"Payment processing error: {error_msg}",
             )
             return
 
@@ -530,8 +546,15 @@ def verify_insurance(incident_id, patient_id, amount=None):
 
 
 def process_payment(patient_id, amount, description):
-    """Process payment using Stripe. Amount is in cents."""
+    """Process payment using Stripe. Amount is in cents.
 
+    Returns:
+        dict: {
+            'success': bool,  # Whether the payment was successful
+            'payment_intent_id': str or None,  # The payment intent ID if successful
+            'error': str or None  # Error message if payment failed
+        }
+    """
     try:
         # Convert amount from cents to dollars for the service
         amount_dollars = float(amount) / 100
@@ -540,15 +563,20 @@ def process_payment(patient_id, amount, description):
         result = process_stripe_payment(amount=amount_dollars, description=description)
 
         if result["success"]:
-            return result["payment_intent_id"]
+            return {
+                "success": True,
+                "payment_intent_id": result["payment_intent_id"],
+                "error": None,
+            }
         else:
             error_msg = result.get("error", "Unknown error")
             print(f"Payment processing failed: {error_msg}")
-            raise Exception(f"Payment failed: {error_msg}")
+            return {"success": False, "payment_intent_id": None, "error": error_msg}
 
     except Exception as e:
-        print(f"Error in process_payment: {str(e)}")
-        raise
+        error_msg = str(e)
+        print(f"Error in process_payment: {error_msg}")
+        return {"success": False, "payment_intent_id": None, "error": error_msg}
 
 
 def consume():
