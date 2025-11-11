@@ -5,8 +5,6 @@ const mysql = require("mysql2/promise");
 const os = require("os");
 
 const app = express();
-const port = 5200;
-console.log(`Starting insurance service on port ${port}`);
 
 // Middleware
 // app.use(cors());
@@ -271,17 +269,12 @@ app.use((err, req, res) => {
   });
 });
 
-// Start server
-const server = app.listen(port, "0.0.0.0", () => {
-  const host = server.address().address;
-  const port = server.address().port;
-  console.log(`Insurance service running at http://${host}:${port}`);
-  console.log("Environment variables:", {
-    DB_HOST: process.env.DB_HOST,
-    DB_PORT: process.env.DB_PORT,
-    DB_NAME: process.env.DB_NAME,
-    NODE_ENV: process.env.NODE_ENV,
+// Only start the server if this file is run directly (not when imported)
+if (require.main === module) {
+  const port = process.env.PORT || 5200;
+  app.listen(port, () => {
+    console.log(`Insurance service is running on port ${port}`);
   });
-});
+}
 
 module.exports = app;
