@@ -3,11 +3,9 @@ import json
 import os
 import signal
 import threading
-import time
-import uuid
 from typing import Any, Dict, Optional
 
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify
 import pika
 
 from amqp_setup import amqp_setup  # your AMQPSetup singleton
@@ -116,46 +114,6 @@ def create_app() -> Flask:
     def status():
         ready = bool(amqp_setup.connection and amqp_setup.connection.is_open)
         return jsonify(amqp_connected=ready), (200 if ready else 503)
-
-    @app.post("/simulate/triage")
-    def simulate_triage():
-        """
-        Dev-only: inject a triage message so EM handles it via AMQP.
-        JSON body:
-          {
-            "status": "abnormal|emergency",
-            "incident_id": "optional-uuid",
-            "patient_id": "P123",
-            "metrics": {"hr":150, "spo2":90},
-            "location": {"lat":1.30, "lng":103.80},
-            "ts": "2025-10-30T12:34:56Z"
-          }
-        """
-        data: Dict[str, Any] = request.get_json(force=True, silent=False)
-        status = str(data.get("status", "")).lower()
-        if status not in {"abnormal", "emergency"}:
-            return jsonify(error="status must be 'abnormal' or 'emergency'"), 400
-
-        incident_id = data.get("incident_id") or str(uuid.uuid4())
-        payload = {
-            "type": "TriageStatus",
-            "incident_id": incident_id,
-            "patient_id": data.get("patient_id", "P123"),
-            "status": status,
-            "metrics": data.get("metrics") or {"hr": 150, "spo2": 90},
-            "location": data.get("location") or {"lat": 1.300, "lng": 103.800},
-            "ts": data.get("ts") or time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        }
-
-        # Publish via a separate, short-lived connection (thread-safe)
-        _publish_once(
-            routing_key=f"triage.status.{status}",
-            body=payload,
-            correlation_id=incident_id,
-        )
-        return jsonify(
-            ok=True, routing_key=f"triage.status.{status}", incident_id=incident_id
-        ), 202
 
     # Start background threads once
     if _should_start_worker():
