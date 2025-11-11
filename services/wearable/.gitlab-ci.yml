@@ -95,19 +95,79 @@ smoke-test-image:
   script:
     # Rebuild image from cache (fast since layers exist)
     - docker build -t "$CI_REGISTRY_IMAGE/$CI_COMMIT_BRANCH:$CI_COMMIT_SHA" .
-    # Run container in detached mode
-    - docker run -d --name wearable-test -p 5000:5000 "$CI_REGISTRY_IMAGE/$CI_COMMIT_BRANCH:$CI_COMMIT_SHA"
-    # Wait for container to be ready
-    - sleep 10
-    # Check if container is still running
-    - docker ps | grep wearable-test
-    # Test health endpoint
-    - curl -f http://localhost:5000/health || (docker logs wearable-test && exit 1)
-    # Test main API endpoint (optional - adjust based on your endpoints)
-    - 'curl -f http://localhost:5000/ || echo "Warning: Root endpoint not accessible"'
+    
+    # Create a dedicated network for the smoke test
+    - docker network create wearable-test-network
+    
+    # Start RabbitMQ container
+    - |
+      docker run -d --name rabbitmq-test \
+        --network wearable-test-network \
+        -e RABBITMQ_DEFAULT_USER=guest \
+        -e RABBITMQ_DEFAULT_PASS=guest \
+        rabbitmq:3.13-management-alpine
+    
+    # Wait for RabbitMQ to be ready
+    - echo "Waiting for RabbitMQ to start..."
+    - sleep 15
+    - docker logs rabbitmq-test | tail -10
+    
+    # Run wearable container connected to the same network
+    - |
+      docker run -d --name wearable-test \
+        --network wearable-test-network \
+        -p 5000:5000 \
+        -e RABBITMQ_HOST=rabbitmq-test \
+        -e RABBITMQ_PORT=5672 \
+        -e RABBITMQ_USER=guest \
+        -e RABBITMQ_PASSWORD=guest \
+        "$CI_REGISTRY_IMAGE/$CI_COMMIT_BRANCH:$CI_COMMIT_SHA"
+    
+    # Wait for Flask app to start and connect to RabbitMQ
+    - echo "Waiting for wearable service to start..."
+    - sleep 15
+    
+    # Check if containers are still running
+    - docker ps | grep wearable-test || (echo "Wearable container crashed!" && docker logs wearable-test && exit 1)
+    - docker ps | grep rabbitmq-test || (echo "RabbitMQ container crashed!" && docker logs rabbitmq-test && exit 1)
+    
+    # Test health endpoint - should return 200 (connected to RabbitMQ)
+    - |
+      HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:5000/health)
+      echo "Health endpoint returned HTTP $HTTP_CODE"
+      if [ "$HTTP_CODE" = "200" ]; then
+        echo "✓ Health check passed - service is fully operational"
+      else
+        echo "✗ Health check failed with HTTP $HTTP_CODE"
+        echo "=== Wearable logs ==="
+        docker logs wearable-test
+        echo "=== RabbitMQ logs ==="
+        docker logs rabbitmq-test
+        exit 1
+      fi
+    
+    # Verify the response shows RabbitMQ connected
+    - |
+      HEALTH_RESPONSE=$(curl -s http://localhost:5000/health)
+      echo "Health response: $HEALTH_RESPONSE"
+      echo "$HEALTH_RESPONSE" | grep -q '"rabbitmq_connected": true' || (echo "RabbitMQ not connected!" && exit 1)
+      echo "✓ RabbitMQ connection confirmed"
+    
+    # Test that wearable is publishing messages
+    - echo "Checking if messages are being sent..."
+    - sleep 5
+    - |
+      HEALTH_RESPONSE=$(curl -s http://localhost:5000/health)
+      echo "$HEALTH_RESPONSE" | grep -q '"messages_sent"' && echo "✓ Message publishing is working"
+    
+    # Show logs for verification
+    - echo "=== Wearable logs (last 20 lines) ==="
+    - docker logs wearable-test 2>&1 | tail -20
+    
     # Cleanup
-    - docker stop wearable-test
-    - docker rm wearable-test
+    - docker stop wearable-test rabbitmq-test || true
+    - docker rm wearable-test rabbitmq-test || true
+    - docker network rm wearable-test-network || true
   allow_failure: false
 
 push-image:
