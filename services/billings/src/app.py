@@ -260,10 +260,6 @@ def callback(ch, method, properties, body):
             print(
                 f"SUCCESS: Payment processed for billing {billing_id}, reference: {payment_reference}"
             )
-            simulate_failure = message_body.get("simulate_failure")
-
-            if simulate_failure == "payment":
-                raise Exception("Simulated payment failure")
 
         except Exception as e:
             error_msg = str(e)
@@ -283,6 +279,11 @@ def callback(ch, method, properties, body):
         # STEP 4: Update Billing Status to PAID
         # ==========================================
         try:
+            simulate_failure = message_body.get("simulate_failure")
+
+            if simulate_failure == "payment":
+                raise Exception("Simulated payment failure")
+
             update_billing_status(
                 billing_id,
                 insurance_verified=True,
