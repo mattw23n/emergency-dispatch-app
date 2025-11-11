@@ -1,6 +1,9 @@
 # Use nginx to serve static frontend files
 FROM nginx:alpine
 
+# Install curl for health checks
+RUN apk add --no-cache curl
+
 # Copy all frontend files to nginx html directory
 COPY dashboard.html /usr/share/nginx/html/
 COPY index.html /usr/share/nginx/html/
