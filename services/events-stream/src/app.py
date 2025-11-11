@@ -11,10 +11,10 @@ from datetime import datetime
 
 import pika
 from flask import Flask, Response, jsonify
-from flask_cors import CORS
+# from flask_cors import CORS
 
 app = Flask(__name__)
-CORS(app)
+# CORS(app)
 
 # Thread-safe queue for passing messages from RabbitMQ consumer to SSE
 event_queue = queue.Queue(maxsize=1000)
