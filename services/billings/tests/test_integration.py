@@ -47,8 +47,16 @@ def test_integration_billing_completed(
     run_consumer, bind_and_get_one, fake_stripe_module, monkeypatch, billings_app_module
 ):
     """Publish cmd.billing.initiate, expect event.billing.completed with status COMPLETED."""
+    
+    # Start the consumer in the background
+    consumer_thread = run_consumer
+    
+    # Set up test data
+    incident_id = str(uuid.uuid4())
+    patient_id = "P123"
+    amount = 123.45
 
-    # Make sure insurance passes
+    # Mock the insurance verification
     monkeypatch.setattr(
         billings_app_module,
         "verify_insurance",
@@ -60,24 +68,47 @@ def test_integration_billing_completed(
         },
     )
 
-    # Stripe is already mocked via fake_stripe_module from conftest.py
-    # No need to patch anything else - it will return success by default
+    # Mock the Stripe service
+    def mock_process_payment(amount, description=""):
+        print(f"[MOCK STRIPE] Processing payment of {amount} for: {description}")
+        return {
+            "success": True,
+            "payment_intent_id": f"pi_test_{incident_id.replace('-', '_')}",
+            "client_secret": "cs_test_123",
+        }
+    
+    monkeypatch.setattr(
+        billings_app_module.stripe_service,
+        "process_stripe_payment",
+        mock_process_payment
+    )
 
-    incident_id = str(uuid.uuid4())
+    # Create and publish the test message
     payload = {
         "incident_id": incident_id,
-        "patient_id": "P123",
-        "amount": 123.45,
+        "patient_id": patient_id,
+        "amount": amount,
     }
-
     _publish("cmd.billing.initiate", payload, corr_id=incident_id)
 
-    # Bind and wait for the completed event
-    msg = bind_and_get_one("event.billing.completed", timeout_s=8.0)
-    assert msg is not None, "Did not receive event.billing.completed"
-    assert msg["incident_id"] == incident_id
-    assert msg["status"] == "COMPLETED"
-    assert float(msg["amount"]) == 123.45
+    try:
+        # Wait for the completed event
+        msg = bind_and_get_one("event.billing.completed", timeout_s=8.0)
+        
+        # Verify the results
+        assert msg is not None, "Did not receive event.billing.completed"
+        assert msg["incident_id"] == incident_id, \
+            f"Expected incident_id {incident_id}, got {msg.get('incident_id')}"
+        assert msg["status"] == "COMPLETED", \
+            f"Expected status=COMPLETED, got {msg.get('status')}"
+        assert float(msg["amount"]) == amount, \
+            f"Expected amount={amount}, got {msg.get('amount')}"
+            
+    finally:
+        # Clean up by stopping the consumer
+        billings_app_module.should_stop = True
+        if consumer_thread and consumer_thread.is_alive():
+            consumer_thread.join(timeout=5.0)
 
 
 def test_integration_insurance_no_policy(

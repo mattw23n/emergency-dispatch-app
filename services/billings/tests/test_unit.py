@@ -188,7 +188,31 @@ def test_callback_success_paid(
         fake_stripe_module: Fixture providing a mock Stripe module.
         monkeypatch: Pytest fixture for patching functions.
     """
-    # Insurance OK
+    # Set up test data
+    test_incident_id = "test-incident-123"
+    test_patient_id = "P123"
+    test_amount = 100.0
+    
+    # Mock the database connection
+    def mock_connect(**kwargs):
+        conn = fake_mysql_connect()
+        cursor = conn.cursor()
+        
+        # Mock the database query results
+        cursor.fetchone_result = {
+            'id': 1,
+            'incident_id': test_incident_id,
+            'patient_id': test_patient_id,
+            'amount': test_amount,
+            'status': 'PENDING',
+            'created_at': '2023-01-01 00:00:00',
+            'updated_at': '2023-01-01 00:00:00'
+        }
+        return conn
+    
+    monkeypatch.setattr('mysql.connector.connect', mock_connect)
+    
+    # Mock the insurance verification
     monkeypatch.setattr(
         billings_app,
         "verify_insurance",
@@ -200,25 +224,41 @@ def test_callback_success_paid(
         },
     )
 
-    # FIXED: Patch stripe_service module directly
-    monkeypatch.setattr(
-        "stripe_service.process_stripe_payment",
-        lambda **kw: {
+    # Mock the Stripe service
+    def mock_process_payment(amount, description=""):
+        print(f"[MOCK STRIPE] Processing payment of {amount} for: {description}")
+        return {
             "success": True,
-            "payment_intent_id": "pi_test_OK",
-            "client_secret": "cs",
-        },
+            "payment_intent_id": f"pi_test_{test_incident_id}",
+            "client_secret": "cs_test_123",
+        }
+    
+    monkeypatch.setattr(
+        billings_app.stripe_service,
+        "process_stripe_payment",
+        mock_process_payment
     )
-
+    
+    # Create test message
+    test_msg = _initiate_msg(
+        incident_id=test_incident_id,
+        patient_id=test_patient_id,
+        amount=test_amount
+    )
+    
     # Call the callback directly
-    billings_app.callback(ch=None, method=None, properties=None, body=_initiate_msg())
-
-    # One publish, to event.billing.completed
-    assert len(capture_publish["calls"]) == 1
+    billings_app.callback(ch=None, method=None, properties=None, body=test_msg)
+    
+    # Verify the results
+    assert len(capture_publish["calls"]) == 1, \
+        f"Expected 1 publish, got {len(capture_publish['calls'])}: {capture_publish['calls']}"
+        
     msg, is_success = capture_publish["calls"][0]
-    assert is_success is True
-    assert msg["status"] == "COMPLETED"
-    assert msg["amount"] == 100
+    assert is_success is True, f"Expected success=True, got {is_success}"
+    assert msg.get("status") == "COMPLETED", \
+        f"Expected status=COMPLETED, got {msg.get('status')}"
+    assert msg["status"] == "COMPLETED", f"Expected status=COMPLETED, got {msg.get('status')}"
+    assert msg["amount"] == 100, f"Expected amount=100, got {msg.get('amount')}"
 
 
 def test_callback_insurance_no_policy(
@@ -281,16 +321,17 @@ def test_callback_payment_declined(
         },
     )
 
-    # FIXED: Patch stripe_service module directly
-    monkeypatch.setattr(
-        "stripe_service.process_stripe_payment",
-        lambda **kw: {
+    # Override the fake Stripe module to return failure for this test
+    def _failing_payment(amount, description=""):
+        return {
             "success": False,
             "error": "Your card was declined",
             "payment_intent_id": None,
             "client_secret": None,
-        },
-    )
+        }
+
+    # Modify the session-scoped fake module directly
+    fake_stripe_module.process_stripe_payment = _failing_payment
 
     billings_app.callback(ch=None, method=None, properties=None, body=_initiate_msg())
 
