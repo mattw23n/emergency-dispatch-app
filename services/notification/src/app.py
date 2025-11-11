@@ -33,10 +33,10 @@ def connect_to_rabbitmq():
     while True:
         try:
             connection = pika.BlockingConnection(parameters)
-            print(f"✅ Connected to RabbitMQ at {hostname}:{port}")
+            print(f"Connected to RabbitMQ at {hostname}:{port}")
             return connection
         except pika.exceptions.AMQPConnectionError as e:
-            print(f"⚠️ RabbitMQ connection failed: {e}. Retrying in 2s...")
+            print(f"RabbitMQ connection failed: {e}. Retrying in 2s...")
             time.sleep(2)
 
 
@@ -167,7 +167,7 @@ def consume_notifications():
             print(f"Notification sent (MessageId: {msg_id})")
 
         except Exception as e:
-            print(f"❌ Error processing message: {e}")
+            print(f"Error processing message: {e}")
 
     channel.basic_consume(queue=queue_name, on_message_callback=callback, auto_ack=True)
     print(f"[*] Waiting for messages on {queue_name}. To exit press CTRL+C.")
@@ -197,7 +197,7 @@ def notify(req: Notification):
 # Hello
 def main():
     """Start the FastAPI app and background RabbitMQ consumer."""
-    print("🚀 Starting Notification microservice...")
+    print("Starting Notification microservice...")
     setup_rabbitmq()
 
     # Start the consumer in a background thread
