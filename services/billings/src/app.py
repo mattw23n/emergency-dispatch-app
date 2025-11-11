@@ -11,7 +11,7 @@ import os
 import signal
 import time
 from threading import Thread
-
+import requests
 import mysql.connector
 import pika
 from flask import Flask, jsonify
@@ -370,32 +370,45 @@ def callback(ch, method, properties, body):
 
 
 def compensate_payment(billing_id, payment_reference):
-    """Compensate a completed payment: refund Stripe and mark billing VOIDED."""
+    """Compensate a completed payment: refund Stripe and mark billing VOIDED.
+
+    Returns:
+        bool: True if compensation was successful, False otherwise
+    """
     try:
+        refund_success = True
         if payment_reference:
             result = stripe_service.refund_payment(payment_reference)
             if result["success"]:
                 print(
-                    f"SUCCESS: Refunded Stripe payment for billing {billing_id}, refund_id: {result['refund_id']}"
+                    f"SUCCESS: Refunded Stripe payment for billing {billing_id}, refund_id: {result.get('refund_id', 'N/A')}"
                 )
             else:
                 print(
-                    f"FAIL: Stripe refund failed for billing {billing_id}: {result['error']}"
+                    f"FAIL: Stripe refund failed for billing {billing_id}: {result.get('error', 'Unknown error')}"
                 )
+                refund_success = False
         else:
             print(f"INFO: No payment to refund for billing {billing_id}")
 
         # Mark billing as VOIDED
-        update_billing_status(
+        update_success = update_billing_status(
             billing_id,
             insurance_verified=False,
             payment_reference=None,
             status="VOIDED",
         )
-        print(f"SUCCESS: Billing {billing_id} marked as VOIDED")
+
+        if update_success:
+            print(f"SUCCESS: Billing {billing_id} marked as VOIDED")
+        else:
+            print(f"FAIL: Failed to update billing {billing_id} status")
+
+        return refund_success and update_success
 
     except Exception as e:
         print(f"FAIL: Compensation for billing {billing_id} failed: {str(e)}")
+        return False
 
 
 def update_billing_status(id, insurance_verified, payment_reference, status):
@@ -416,9 +429,10 @@ def update_billing_status(id, insurance_verified, payment_reference, status):
         )
         cnx.commit()
         print(f"Updated billings {id} with status: {status}")
+        return True
     except mysql.connector.Error as err:
         print(f"Error updating billings status: {err}")
-        raise
+        return False
     finally:
         if "cnx" in locals() and cnx.is_connected():
             cursor.close()
@@ -445,7 +459,6 @@ def verify_insurance(incident_id, patient_id, amount=None):
             - message (str): Human-readable status message
             - http_status (int|None): HTTP status code from the insurance service
     """
-    import requests
 
     try:
         if amount is None:

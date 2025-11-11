@@ -152,6 +152,10 @@ def billings_app_module(fake_stripe_module):  # CHANGED: Add dependency
         module: The imported billings app module.
     """
     # Import after env is set AND fake_stripe_module is in sys.modules
+    import sys
+    import os
+    # Add the src directory to the Python path
+    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
     import app as billings_app  # your billings app.py
 
     return billings_app
