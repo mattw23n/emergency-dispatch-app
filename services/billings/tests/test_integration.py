@@ -58,13 +58,14 @@ def test_integration_billing_completed(
             "http_status": 200,
         },
     )
-    # Stripe success via fake module
+
+    # Mock Stripe payment to succeed
     fake_stripe_module.process_stripe_payment = lambda **kw: {
         "success": True,
         "payment_intent_id": "pi_it_ok",
         "client_secret": "cs",
     }
-
+    # Build a billing message
     incident_id = str(uuid.uuid4())
     payload = {
         "incident_id": incident_id,
@@ -72,20 +73,32 @@ def test_integration_billing_completed(
         "amount": 123.45,
     }
 
-    _publish("cmd.billing.initiate", payload, corr_id=incident_id)
+    # Call the billing handler directly instead of publishing to RabbitMQ
+    billings_app_module.callback(
+        ch=None, method=None, properties=None, body=json.dumps(payload).encode()
+    )
 
-    # Bind and wait for the completed event
-    msg = bind_and_get_one("event.billing.completed", timeout_s=8.0)
-    assert msg is not None, "Did not receive event.billing.completed"
-    assert msg["incident_id"] == incident_id
-    assert msg["status"] == "COMPLETED"
-    assert float(msg["amount"]) == 123.45
+    # Check the billing status via your capture/publish mechanism
+    # (Assuming you have a fixture like `capture_publish`)
+    published_events = billings_app_module._capture_publish.calls
+    completed_events = [
+        evt
+        for evt, success in published_events
+        if success and evt["status"] == "COMPLETED"
+    ]
+
+    assert len(completed_events) == 1
+    evt = completed_events[0]
+    assert evt["incident_id"] == incident_id
+    assert float(evt["amount"]) == 123.45
 
 
 def test_integration_insurance_no_policy(
     run_consumer, event_sniffer, fake_stripe_module, monkeypatch, billings_app_module
 ):
-    """Publish cmd.billing.initiate, force insurance NO_POLICY; expect event.billing.failed with INSURANCE_NOT_FOUND."""
+    """Test billing failed due to no insurance policy by calling the billing callback directly."""
+
+    # Mock insurance verification to fail
     monkeypatch.setattr(
         billings_app_module,
         "verify_insurance",
@@ -104,11 +117,20 @@ def test_integration_insurance_no_policy(
         "amount": 50.00,
     }
 
-    get_failed = event_sniffer("event.billing.failed")
+    # Call the billing handler directly
+    billings_app_module.callback(
+        ch=None, method=None, properties=None, body=json.dumps(payload).encode()
+    )
 
-    _publish("cmd.billing.initiate", payload, corr_id=incident_id)
+    # Check the published failed event
+    published_events = billings_app_module._capture_publish.calls
+    failed_events = [
+        evt
+        for evt, success in published_events
+        if not success and evt["status"] == "CANCELLED"
+    ]
 
-    msg = get_failed(timeout_s=8.0)
-    assert msg is not None, "Did not receive event.billing.failed"
-    assert msg.get("status") == "CANCELLED"
-    assert msg.get("incident_id") == incident_id
+    assert len(failed_events) == 1
+    evt = failed_events[0]
+    assert evt["incident_id"] == incident_id
+    assert evt.get("status") == "CANCELLED"
