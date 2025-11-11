@@ -476,6 +476,55 @@
         .toast.info {
             border-left: 4px solid #3b82f6;
         }
+
+        /* SSE Status badge */
+        .sse-status {
+            margin-left: 20px;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 11px;
+            background: #fbbf24;
+            color: #78350f;
+        }
+
+        .sse-status.connected {
+            background: #10b981;
+            color: white;
+        }
+
+        .sse-status.disconnected {
+            background: #ef4444;
+            color: white;
+        }
+
+        /* Additional paragraph styles */
+        .control-note {
+            margin-top: 15px;
+            font-size: 12px;
+            color: #64748b;
+        }
+
+        .control-warning {
+            margin-top: 10px;
+            font-size: 12px;
+            color: #f59e0b;
+        }
+
+        /* Legend color boxes */
+        .legend-events-manager {
+            background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+        }
+
+        .legend-microservices {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+
+        /* Empty state messages */
+        .empty-message {
+            color: #94a3b8;
+            text-align: center;
+            padding: 20px;
+        }
     </style>
 </head>
 <body>
@@ -484,7 +533,7 @@
             <h1>🚑 Emergency Services Orchestration Dashboard</h1>
             <p class="subtitle">
                 Real-time monitoring of microservices and event-driven workflows via Events Manager
-                <span id="sseStatus" style="margin-left: 20px; padding: 4px 12px; border-radius: 12px; font-size: 11px; background: #fbbf24; color: #78350f;">
+                <span id="sseStatus" class="sse-status">
                     ⏳ Connecting to event stream...
                 </span>
             </p>
@@ -494,9 +543,9 @@
             <!-- Service Architecture Visualization -->
             <div class="panel panel-full">
                 <div class="panel-header">
-                    <div class="panel-title">📊 Service Architecture & Event Flow</div>
+                    <div class="panel-title">📊 Service Architecture &amp; Event Flow</div>
                     <div class="panel-actions">
-                        <button class="btn btn-primary" onclick="refreshHealth()">🔄 Refresh</button>
+                        <button type="button" class="btn btn-primary" onclick="refreshHealth()">🔄 Refresh</button>
                     </div>
                 </div>
                 <div class="architecture-diagram" id="architectureDiagram">
@@ -505,11 +554,11 @@
                 </div>
                 <div class="legend">
                     <div class="legend-item">
-                        <div class="legend-color" style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);"></div>
+                        <div class="legend-color legend-events-manager"></div>
                         <span>Events Manager (Orchestrator)</span>
                     </div>
                     <div class="legend-item">
-                        <div class="legend-color" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);"></div>
+                        <div class="legend-color legend-microservices"></div>
                         <span>Microservices</span>
                     </div>
                     <div class="legend-item">
@@ -569,11 +618,11 @@
                 <div class="panel-header">
                     <div class="panel-title">📋 Live Event Timeline</div>
                     <div class="panel-actions">
-                        <button class="btn btn-danger" onclick="clearTimeline()">🗑️ Clear</button>
+                        <button type="button" class="btn btn-danger" onclick="clearTimeline()">🗑️ Clear</button>
                     </div>
                 </div>
                 <div class="timeline" id="eventTimeline">
-                    <p style="color: #94a3b8; text-align: center; padding: 20px;">
+                    <p class="empty-message">
                         No events yet. Trigger a test scenario below to see event flow.
                     </p>
                 </div>
@@ -585,23 +634,23 @@
                     <div class="panel-title">🎮 Real Event Triggers (via API)</div>
                 </div>
                 <div class="button-group">
-                    <button class="btn btn-success" onclick="triggerTriageEmergency()">
+                    <button type="button" class="btn btn-success" onclick="triggerTriageEmergency()">
                         🚨 Trigger Emergency
                     </button>
-                    <button class="btn btn-warning" onclick="triggerTriageAbnormal()">
+                    <button type="button" class="btn btn-warning" onclick="triggerTriageAbnormal()">
                         ⚠️ Trigger Abnormal Vitals
                     </button>
-                    <button class="btn btn-danger" onclick="resetToNormalMode()">
+                    <button type="button" class="btn btn-danger" onclick="resetToNormalMode()">
                         🔄 Reset Wearable to Normal Mode
                     </button>
                 </div>
-                <p style="margin-top: 15px; font-size: 12px; color: #64748b;">
-                    <strong>Real Event Flow:</strong> These buttons call actual service APIs that publish to RabbitMQ. 
-                    Events flow through AMQP and are processed by Events-Manager. 
+                <p class="control-note">
+                    <strong>Real Event Flow:</strong> These buttons call actual service APIs that publish to RabbitMQ.
+                    Events flow through AMQP and are processed by Events-Manager.
                     Monitor RabbitMQ Management UI (localhost:15672) to see real message flow.
                 </p>
-                <p style="margin-top: 10px; font-size: 12px; color: #f59e0b;">
-                    <strong>⚠️ Note:</strong> Dashboard shows triggered actions, but actual AMQP events happen in the background. 
+                <p class="control-warning">
+                    <strong>⚠️ Note:</strong> Dashboard shows triggered actions, but actual AMQP events happen in the background.
                     Check service logs with <code>docker-compose logs -f [service-name]</code> to see real event processing.
                 </p>
             </div>
@@ -1041,7 +1090,7 @@
         function clearTimeline() {
             const timeline = document.getElementById('eventTimeline');
             timeline.innerHTML = `
-                <p style="color: #94a3b8; text-align: center; padding: 20px;">
+                <p class="empty-message">
                     No events yet. Trigger a test scenario below to see event flow.
                 </p>
             `;

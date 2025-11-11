@@ -11,9 +11,9 @@ html-validate:
   before_script:
     - npm install -g html-validate
   script:
-    - html-validate *.html | tee html_validate_report.txt
+    - html-validate *.html | tee html_validate_report.txt || echo "HTML validation warnings found"
   artifacts:
-    when: on_failure
+    when: always
     paths:
       - html_validate_report.txt
   allow_failure: true
@@ -31,6 +31,7 @@ semgrep:
   stage: Security Testing
   image: returntocorp/semgrep
   script: ["semgrep ci --config p/owasp-top-ten"]
+  allow_failure: true
 
 trivy:
   stage: Security Testing

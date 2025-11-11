@@ -7,9 +7,9 @@ services:
       context: ../
       dockerfile: Dockerfile
     ports:
-      - "80:80"
+      - "8080:8080"
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost/"]
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/"]
       interval: 10s
       timeout: 5s
       retries: 3
