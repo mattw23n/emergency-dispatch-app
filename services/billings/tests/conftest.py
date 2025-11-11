@@ -96,51 +96,33 @@ def amqp_channel(amqp_conn):
 
 
 # ---- Stripe fake module (prevents real import & API calls) ----
-@pytest.fixture(autouse=True)  # autouse=True ensures this runs for all tests
+@pytest.fixture
 def fake_stripe_module(monkeypatch):
     """Create a fake stripe_service module for testing.
 
-    This fixture runs automatically for all tests to ensure the Stripe module
-    is properly mocked before any imports occur.
+    Inserts a fake 'stripe_service' module into sys.modules so that
+    billings.process_payment imports this fake one. You can customize
+    return values per-test by setting attributes later.
+
+    Args:
+        monkeypatch: Pytest monkeypatch fixture.
+
+    Returns:
+        ModuleType: The fake stripe_service module.
     """
-    # Create a fake stripe module
-    fake_stripe = ModuleType('stripe')
-    # Add any Stripe-specific attributes that might be needed
-    fake_stripe.error = type('StripeError', (Exception,), {})
-    
-    # Create a fake stripe_service module
-    fake_stripe_service = ModuleType('stripe_service')
-    
-    # Mock process_stripe_payment to return success by default
-    def mock_process_stripe_payment(amount, currency="usd", description=""):
+    fake = ModuleType("stripe_service")
+
+    def _ok(amount, currency="usd", description=""):
+        # mirror your real return structure
         return {
             "success": True,
             "client_secret": "cs_test_123",
-            "payment_intent_id": f"pi_test_{id(amount)}",
+            "payment_intent_id": "pi_test_123",
         }
-    
-    # Mock refund_payment
-    def mock_refund_payment(payment_intent_id, amount=None, reason=None):
-        return {
-            "success": True,
-            "refund_id": f"re_test_{id(payment_intent_id)}",
-            "amount": amount,
-            "status": "succeeded"
-        }
-    
-    fake_stripe_service.process_stripe_payment = mock_process_stripe_payment
-    fake_stripe_service.refund_payment = mock_refund_payment
-    
-    # Patch the modules before they're imported
-    monkeypatch.setitem(sys.modules, 'stripe', fake_stripe)
-    monkeypatch.setitem(sys.modules, 'stripe_service', fake_stripe_service)
-    
-    # Re-import the app module to ensure it uses our mocks
-    if 'app' in sys.modules:
-        import importlib
-        importlib.reload(sys.modules['app'])
-    
-    return fake_stripe_service
+
+    fake.process_stripe_payment = _ok
+    monkeypatch.setitem(sys.modules, "stripe_service", fake)
+    return fake
 
 
 # ---- Import app AFTER we set env and fakes ----
