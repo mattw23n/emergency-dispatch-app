@@ -2,6 +2,9 @@
 import pytest
 from fastapi.testclient import TestClient
 from src.app import app
+import pika
+import time
+import json
 
 
 # Create a reusable test client for FastAPI
@@ -39,3 +42,51 @@ def test_health(client):
 #     result = call(client, '/notify', method='POST', body=body)
 #     assert result['code'] == 200
 #     assert "status" in result['json']
+
+
+@pytest.mark.dependency(depends=["test_health"])
+def test_rabbitmq_integration():
+    """Integration test to verify RabbitMQ exchange, binding, and message delivery."""
+    hostname = "rabbitmq"
+    port = 5672
+    exchange_name = "amqp.topic"
+    exchange_type = "topic"
+    queue_name = "Notification"
+    binding_key = "*.notification.#"
+
+    connection = pika.BlockingConnection(
+        pika.ConnectionParameters(host=hostname, port=port)
+    )
+    channel = connection.channel()
+
+    channel.exchange_declare(
+        exchange=exchange_name, exchange_type=exchange_type, durable=True
+    )
+    channel.queue_declare(queue=queue_name, durable=True)
+    channel.queue_bind(
+        exchange=exchange_name, queue=queue_name, routing_key=binding_key
+    )
+
+    test_message = {
+        "template": "BILLING_COMPLETED",
+        "vars": {"patient_id": "P001", "amount": 123.45, "status": "PAID"},
+    }
+    routing_key = "test.notification.billing"
+
+    channel.basic_publish(
+        exchange=exchange_name, routing_key=routing_key, body=json.dumps(test_message)
+    )
+
+    time.sleep(1)
+
+    method_frame, header_frame, body = channel.basic_get(
+        queue=queue_name, auto_ack=True
+    )
+
+    assert body is not None, "Expected a message in the Notification queue"
+    body_data = json.loads(body.decode())
+    assert body_data["template"] == "BILLING_COMPLETED"
+    assert body_data["vars"]["status"] == "PAID"
+
+    channel.close()
+    connection.close()
