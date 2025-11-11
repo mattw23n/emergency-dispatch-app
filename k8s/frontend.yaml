@@ -30,7 +30,7 @@ spec:
     spec:
       containers:
         - name: frontend
-          image: registry.gitlab.com/cs302-2025/g2-team5/frontend/main:9981d04bca09ff45a9649fb7a6229f297cfabede
+          image: registry.gitlab.com/cs302-2025/g2-team5/frontend/main:e792c17cb8cd4ec2f96650ac910deb664ca8f25d
           imagePullPolicy: Always
           ports:
             - containerPort: 3000
