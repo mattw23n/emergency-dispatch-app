@@ -3,6 +3,7 @@
 This module contains integration tests that verify the interaction between the billings service
 and its dependencies, including the message broker and external services.
 """
+
 import json
 import os
 import uuid

@@ -3,6 +3,7 @@
 This module provides test fixtures and configuration for the billings service,
 including AMQP connection helpers, mock services, and test utilities.
 """
+
 import json
 import os
 import sys

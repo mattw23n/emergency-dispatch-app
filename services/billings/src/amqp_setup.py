@@ -3,6 +3,7 @@
 This module provides the AMQPSetup class which handles the connection, setup,
 and message publishing to RabbitMQ for the billing service.
 """
+
 import json
 import time
 from os import environ

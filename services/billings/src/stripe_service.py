@@ -65,3 +65,51 @@ def process_stripe_payment(
             "client_secret": None,
             "payment_intent_id": None,
         }
+
+
+def refund_payment(payment_intent_id, amount=None, reason=None):
+    """Refund a payment using Stripe API.
+
+    Args:
+        payment_intent_id (str): The Stripe PaymentIntent ID to refund
+        amount (float, optional): Amount to refund in dollars. If None, full amount is refunded.
+        reason (str, optional): Reason for the refund.
+
+    Returns:
+        dict: {
+            'success': bool,
+            'refund_id': str or None,
+            'error': str or None
+        }
+    """
+    try:
+        print(f"[STRIPE] Processing refund for payment intent: {payment_intent_id}")
+
+        # Convert amount to cents if provided
+        amount_cents = int(float(amount) * 100) if amount is not None else None
+
+        # Create refund
+        refund = stripe.Refund.create(
+            payment_intent=payment_intent_id,
+            amount=amount_cents,
+            reason=reason or "requested_by_customer",
+        )
+
+        print(f"[STRIPE] Refund successful. Refund ID: {refund.id}")
+        return {
+            "success": True,
+            "refund_id": refund.id,
+            "amount": refund.amount / 100,  # Convert back to dollars
+            "currency": refund.currency.upper(),
+            "status": refund.status,
+            "error": None,
+        }
+
+    except stripe.error.StripeError as e:
+        error_msg = f"Stripe error processing refund: {str(e)}"
+        print(f"[ERROR] {error_msg}")
+        return {"success": False, "refund_id": None, "error": error_msg}
+    except Exception as e:
+        error_msg = f"Unexpected error processing refund: {str(e)}"
+        print(f"[ERROR] {error_msg}")
+        return {"success": False, "refund_id": None, "error": error_msg}

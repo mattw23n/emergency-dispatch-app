@@ -3,6 +3,7 @@
 This module contains tests that verify the health check endpoint and its responses
 under various conditions, including database connectivity issues.
 """
+
 import app as billings_app
 
 

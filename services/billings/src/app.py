@@ -4,6 +4,7 @@ This module implements the billing service that handles payment processing,
 insurance verification, and billing status updates. It provides both an HTTP API
 for health checks and a message consumer for processing billing commands.
 """
+
 import datetime
 import json
 import os
@@ -16,6 +17,7 @@ import pika
 from flask import Flask, jsonify
 
 import amqp_setup
+from stripe_service import process_stripe_payment, refund_payment
 
 # Create a singleton AMQP helper
 amqp = amqp_setup.AMQPSetup()
@@ -106,7 +108,6 @@ def callback(ch, method, properties, body):
         # --- Insurance verification
         v = verify_insurance(incident_id, patient_id, amount)
 
-        # Support both dict (new) and bool (legacy) return types
         if isinstance(v, dict):
             insurance_verified = bool(v.get("verified"))
             reason = v.get("reason")
@@ -178,7 +179,6 @@ def callback(ch, method, properties, body):
                 except Exception as notify_err:
                     print(f"WARNING: Failed to send failure notification: {notify_err}")
         else:
-            # Not verified — publish specific insurance failure reason
             print(
                 f"INFO: Insurance verification failed for billings {billing_id}: "
                 f"{reason} ({http_status}) - {reason_msg}"
@@ -189,7 +189,7 @@ def callback(ch, method, properties, body):
                     "incident_id": incident_id,
                     "patient_id": patient_id,
                     "amount": amount,
-                    "status": billing_status,  # INSURANCE_NOT_FOUND / INSUFFICIENT_COVERAGE / ...
+                    "status": billing_status,
                     "error": reason_msg,
                     "details": {"reason": reason, "http_status": http_status},
                     "timestamp": datetime.datetime.utcnow().isoformat(),
@@ -201,9 +201,15 @@ def callback(ch, method, properties, body):
                 )
 
         # --- Persist final status to DB
-        update_billing_status(
-            billing_id, insurance_verified, payment_reference, billing_status
-        )
+        try:
+            update_billing_status(
+                billing_id, insurance_verified, payment_reference, billing_status
+            )
+        except Exception as db_err:
+            print(f"[ERROR] Billing DB update failed after payment: {db_err}")
+            # Payment succeeded but DB update failed → trigger compensation
+            compensate_payment(billing_id, payment_reference)
+            return  # stop further processing
 
     except Exception as e:
         print(f"FAIL: Unexpected error: {str(e)}")
@@ -214,6 +220,35 @@ def callback(ch, method, properties, body):
         finally:
             if cnx and cnx.is_connected():
                 cnx.close()
+
+
+def compensate_payment(billing_id, payment_reference):
+    """Compensate a completed payment: refund Stripe and mark billing VOIDED."""
+    try:
+        if payment_reference:
+            result = refund_payment(payment_reference)
+            if result["success"]:
+                print(
+                    f"SUCCESS: Refunded Stripe payment for billing {billing_id}, refund_id: {result['refund_id']}"
+                )
+            else:
+                print(
+                    f"FAIL: Stripe refund failed for billing {billing_id}: {result['error']}"
+                )
+        else:
+            print(f"INFO: No payment to refund for billing {billing_id}")
+
+        # Mark billing as VOIDED
+        update_billing_status(
+            billing_id,
+            insurance_verified=False,
+            payment_reference=None,
+            status="VOIDED",
+        )
+        print(f"SUCCESS: Billing {billing_id} marked as VOIDED")
+
+    except Exception as e:
+        print(f"FAIL: Compensation for billing {billing_id} failed: {str(e)}")
 
 
 def update_billing_status(id, insurance_verified, payment_reference, status):
@@ -266,7 +301,6 @@ def verify_insurance(incident_id, patient_id, amount=None):
     import requests
 
     try:
-        # Get amount from DB if not provided
         if amount is None:
             cnx = _mysql_connect_with_retries()
             cursor = cnx.cursor(dictionary=True)
@@ -294,8 +328,6 @@ def verify_insurance(incident_id, patient_id, amount=None):
 
         try:
             r = requests.post(
-                # HTTP is safe here - internal Docker network communication only
-                # nosemgrep: python.lang.security.audit.insecure-transport.requests.request-with-http.request-with-http
                 url,
                 json={
                     "patient_id": patient_id,
@@ -306,7 +338,6 @@ def verify_insurance(incident_id, patient_id, amount=None):
                 timeout=10,
             )
         except requests.exceptions.RequestException as e:
-            # Real connectivity/timeout/DNS error
             print(f"Insurance service network error: {e}")
             return {
                 "verified": False,
@@ -315,7 +346,6 @@ def verify_insurance(incident_id, patient_id, amount=None):
                 "http_status": None,
             }
 
-        # Try to decode JSON for messages even on non-200
         try:
             payload = r.json()
         except ValueError:
@@ -350,7 +380,6 @@ def verify_insurance(incident_id, patient_id, amount=None):
                 "http_status": 402,
             }
 
-        # Any other 4xx/5xx from insurance service
         msg = payload.get("error") or payload.get("message") or r.text
         print(f"Insurance service error ({r.status_code}): {msg}")
         return {
@@ -372,7 +401,6 @@ def verify_insurance(incident_id, patient_id, amount=None):
 
 def process_payment(patient_id, amount, description):
     """Process payment using Stripe. Amount is in cents."""
-    from stripe_service import process_stripe_payment
 
     try:
         # Convert amount from cents to dollars for the service
