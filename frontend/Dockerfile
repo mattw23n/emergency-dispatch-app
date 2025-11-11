@@ -3,11 +3,11 @@ FROM nginxinc/nginx-unprivileged:alpine
 
 # Install curl for health checks
 USER root
-RUN apk add --no-cache curl
+RUN apk add --no-cache curl gettext
 USER nginx
 
 # Copy all frontend files to nginx html directory
-COPY dashboard.html /usr/share/nginx/html/
+COPY dashboard.html /usr/share/nginx/html/dashboard.html.template
 COPY index.html /usr/share/nginx/html/
 
 # Create custom nginx config for port 3000
