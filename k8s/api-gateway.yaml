@@ -61,9 +61,9 @@ spec:
             pathType: ImplementationSpecific
             backend:
               service:
-                name: api-gateway
+                name: frontend
                 port:
-                  number: 80
+                  number: 3000
           # API endpoints
           - path: /api/v1/billings/(.*)
             pathType: ImplementationSpecific
