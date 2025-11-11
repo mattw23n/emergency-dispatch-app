@@ -17,7 +17,7 @@ from urllib.parse import urlparse
 import pika
 import requests
 from flask import Flask, jsonify
-from flask_cors import CORS
+# from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import Float, Integer, String, create_engine, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -496,7 +496,7 @@ def create_app(db_uri: Optional[str] = None) -> Flask:
     flask_app.config["SQLALCHEMY_DATABASE_URI"] = db_uri
     flask_app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
-    CORS(flask_app)
+    # CORS(flask_app)
     db.init_app(flask_app)
 
     with flask_app.app_context():
