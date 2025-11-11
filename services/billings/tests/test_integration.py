@@ -47,6 +47,7 @@ def test_integration_billing_completed(
     run_consumer, bind_and_get_one, fake_stripe_module, monkeypatch, billings_app_module
 ):
     """Publish cmd.billing.initiate, expect event.billing.completed with status COMPLETED."""
+
     # Make sure insurance passes
     monkeypatch.setattr(
         billings_app_module,
@@ -59,15 +60,8 @@ def test_integration_billing_completed(
         },
     )
 
-    # FIXED: Use monkeypatch.setattr() consistently
-    monkeypatch.setattr(
-        "stripe_service.process_stripe_payment",
-        lambda **kw: {
-            "success": True,
-            "payment_intent_id": "pi_it_ok",
-            "client_secret": "cs",
-        },
-    )
+    # Stripe is already mocked via fake_stripe_module from conftest.py
+    # No need to patch anything else - it will return success by default
 
     incident_id = str(uuid.uuid4())
     payload = {

@@ -96,44 +96,62 @@ def amqp_channel(amqp_conn):
 
 
 # ---- Stripe fake module (prevents real import & API calls) ----
-@pytest.fixture
-def fake_stripe_module(monkeypatch):
+# CHANGED: Make this session-scoped so it's available BEFORE billings_app_module imports
+@pytest.fixture(scope="session")
+def fake_stripe_module():
     """Create a fake stripe_service module for testing.
 
     Inserts a fake 'stripe_service' module into sys.modules so that
     billings.process_payment imports this fake one. You can customize
     return values per-test by setting attributes later.
 
-    Args:
-        monkeypatch: Pytest monkeypatch fixture.
-
     Returns:
         ModuleType: The fake stripe_service module.
     """
     fake = ModuleType("stripe_service")
 
-    def _ok(amount, currency="usd", description=""):
-        # mirror your real return structure
+    def _process_payment(amount, description=""):
+        """Mock Stripe payment processing."""
+        print(f"[FAKE STRIPE] Processing payment of {amount} for: {description}")
         return {
             "success": True,
             "client_secret": "cs_test_123",
             "payment_intent_id": "pi_test_123",
         }
 
-    fake.process_stripe_payment = _ok
-    monkeypatch.setitem(sys.modules, "stripe_service", fake)
-    return fake
+    def _refund_payment(payment_reference):
+        """Mock Stripe refund."""
+        print(f"[FAKE STRIPE] Refunding payment: {payment_reference}")
+        return {
+            "success": True,
+            "refund_id": "re_test_123",
+        }
+
+    fake.process_stripe_payment = _process_payment
+    fake.refund_payment = _refund_payment
+
+    # CRITICAL: Insert BEFORE app.py imports it
+    sys.modules["stripe_service"] = fake
+
+    yield fake
+
+    # Cleanup after session
+    if "stripe_service" in sys.modules:
+        del sys.modules["stripe_service"]
 
 
 # ---- Import app AFTER we set env and fakes ----
 @pytest.fixture(scope="session")
-def billings_app_module():
+def billings_app_module(fake_stripe_module):  # CHANGED: Add dependency
     """Provide the billings application module with test configuration.
+
+    Args:
+        fake_stripe_module: Ensures fake Stripe is loaded first.
 
     Returns:
         module: The imported billings app module.
     """
-    # Import after env is set
+    # Import after env is set AND fake_stripe_module is in sys.modules
     import app as billings_app  # your billings app.py
 
     return billings_app
