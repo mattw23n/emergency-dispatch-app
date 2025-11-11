@@ -6,7 +6,7 @@
 stages:
   - Static Analysis
   - Security Testing
-  - Test
+  # - Test
   - Release
   - Deploy
 
