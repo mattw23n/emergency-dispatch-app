@@ -222,6 +222,8 @@ def callback(ch, method, properties, body):
                 print(f"FAIL: Insurance verification failed: {reason} - {reason_msg}")
                 rollback_billing(
                     billing_id=billing_id,
+                    payment_reference=None,
+                    insurance_verified=False,
                     incident_id=incident_id,
                     patient_id=patient_id,
                     amount=amount,
@@ -235,6 +237,8 @@ def callback(ch, method, properties, body):
             print(f"FAIL: Insurance verification error: {e}")
             rollback_billing(
                 billing_id=billing_id,
+                payment_reference=None,
+                insurance_verified=False,
                 incident_id=incident_id,
                 patient_id=patient_id,
                 amount=amount,

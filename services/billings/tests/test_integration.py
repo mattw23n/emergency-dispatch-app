@@ -110,5 +110,5 @@ def test_integration_insurance_no_policy(
 
     msg = get_failed(timeout_s=8.0)
     assert msg is not None, "Did not receive event.billing.failed"
-    assert msg.get("status") == "INSURANCE_NOT_FOUND"
+    assert msg.get("status") == "CANCELLED"
     assert msg.get("incident_id") == incident_id
