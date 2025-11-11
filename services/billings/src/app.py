@@ -11,7 +11,6 @@ import os
 import signal
 import time
 from threading import Thread
-import requests
 import mysql.connector
 import pika
 from flask import Flask, jsonify
@@ -459,6 +458,7 @@ def verify_insurance(incident_id, patient_id, amount=None):
             - message (str): Human-readable status message
             - http_status (int|None): HTTP status code from the insurance service
     """
+    import requests
 
     try:
         if amount is None:
