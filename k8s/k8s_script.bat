@@ -167,12 +167,81 @@ if %errorlevel% neq 0 (
 )
 echo %GREEN%[SUCCESS]%NC% RabbitMQ is ready
 
+REM Deploy API Gateway first (before other services)
+echo %BLUE%[INFO]%NC% Deploying API Gateway...
+if not exist "api-gateway.yaml" (
+    echo %RED%[ERROR]%NC% Required file not found: api-gateway.yaml
+    exit /b 1
+)
+kubectl apply -f api-gateway.yaml
+if %errorlevel% neq 0 (
+    echo %RED%[ERROR]%NC% Failed to deploy API Gateway
+    exit /b 1
+)
+echo %GREEN%[SUCCESS]%NC% API Gateway deployment started
+
+REM Wait for API Gateway to be ready
+echo %BLUE%[INFO]%NC% Waiting for API Gateway to be ready...
+kubectl wait --for=condition=available --timeout=300s deployment/api-gateway
+if %errorlevel% neq 0 (
+    echo %RED%[ERROR]%NC% API Gateway deployment failed to become ready within 5 minutes
+    echo %RED%[ERROR]%NC% Check API Gateway pod logs: kubectl logs -l app=api-gateway
+    exit /b 1
+)
+
+REM Wait for API Gateway service to be ready
+echo %BLUE%[INFO]%NC% Waiting for API Gateway service to be ready...
+kubectl wait --for=condition=ready --timeout=60s pod -l app=api-gateway
+if %errorlevel% neq 0 (
+    echo %YELLOW%[WARNING]%NC% API Gateway pods may not be fully ready, but continuing...
+)
+echo %GREEN%[SUCCESS]%NC% API Gateway is ready
+
+REM Get API Gateway URL from minikube
+echo %BLUE%[INFO]%NC% Getting API Gateway URL from minikube...
+for /f "delims=" %%i in ('minikube service api-gateway --url') do set "API_GATEWAY_URL=%%i"
+
+if "%API_GATEWAY_URL%"=="" (
+    echo %RED%[ERROR]%NC% Failed to get API Gateway URL from minikube
+    echo %RED%[ERROR]%NC% Make sure API Gateway service is running
+    exit /b 1
+)
+
+echo %GREEN%[SUCCESS]%NC% API Gateway URL: %API_GATEWAY_URL%
+
+REM Create frontend ConfigMap with API Gateway URL
+echo %BLUE%[INFO]%NC% Creating frontend configuration with API Gateway URL...
+kubectl create configmap frontend-config --from-literal=API_GATEWAY_URL="%API_GATEWAY_URL%" --dry-run=client -o yaml > temp-frontend-config.yaml
+if %errorlevel% neq 0 (
+    echo %RED%[ERROR]%NC% Failed to create frontend config YAML
+    exit /b 1
+)
+
+kubectl apply -f temp-frontend-config.yaml
+if %errorlevel% neq 0 (
+    echo %RED%[ERROR]%NC% Failed to apply frontend config
+    del temp-frontend-config.yaml
+    exit /b 1
+)
+
+del temp-frontend-config.yaml
+echo %GREEN%[SUCCESS]%NC% Frontend configuration created with API Gateway URL
+
+REM Update the main configmap with API Gateway URL
+echo %BLUE%[INFO]%NC% Updating main configmap with API Gateway URL...
+kubectl patch configmap env-vars-configmap --patch="{\"data\":{\"api_gateway_url\":\"%API_GATEWAY_URL%\"}}"
+if %errorlevel% neq 0 (
+    echo %YELLOW%[WARNING]%NC% Failed to update main configmap, but continuing...
+) else (
+    echo %GREEN%[SUCCESS]%NC% Main configmap updated with API Gateway URL
+)
+
 REM Deploy other services
 echo %BLUE%[INFO]%NC% Deploying other services...
 
 set deployed_count=0
 for %%f in (*.yaml) do (
-    if not "%%f"=="configmap.yaml" if not "%%f"=="secret.yaml" if not "%%f"=="rabbitmq.yaml" if not "%%f"==".gitignore" (
+    if not "%%f"=="configmap.yaml" if not "%%f"=="secret.yaml" if not "%%f"=="rabbitmq.yaml" if not "%%f"=="api-gateway.yaml" if not "%%f"==".gitignore" (
         echo %BLUE%[INFO]%NC% Applying %%f...
         kubectl apply -f "%%f"
         if !errorlevel! neq 0 (
@@ -220,6 +289,15 @@ REM Show access information
 echo %BLUE%[INFO]%NC% Service Access Information:
 echo ============================
 minikube service list
+
+REM Show frontend access information
+echo %BLUE%[INFO]%NC% Frontend Configuration:
+echo ========================
+echo API Gateway URL: %API_GATEWAY_URL%
+echo Frontend will automatically use this URL for API calls
+echo.
+echo To access the frontend dashboard:
+for /f "delims=" %%i in ('minikube service frontend --url') do echo Frontend URL: %%i
 
 echo %GREEN%[SUCCESS]%NC% Script completed successfully!
 pause
