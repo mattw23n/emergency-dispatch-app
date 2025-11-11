@@ -7,22 +7,31 @@ RUN apk add --no-cache curl
 # Copy all frontend files to nginx html directory
 COPY dashboard.html /usr/share/nginx/html/
 COPY index.html /usr/share/nginx/html/
+# Create custom nginx config for port 3000
+RUN echo 'server { \
+    listen 3000; \
+    server_name localhost; \
+    root /usr/share/nginx/html; \
+    index index.html dashboard.html; \
+    location / { \
+        try_files $uri $uri/ /index.html; \
+    } \
+    location /health { \
+        access_log off; \
+        return 200 "healthy\n"; \
+        add_header Content-Type text/plain; \
+    } \
+}' > /etc/nginx/conf.d/default.conf
 
-# Create non-root user for security
-RUN adduser -D -H -u 1001 -s /sbin/nologin nginxuser
+RUN chown -R nginx:nginx /var/cache/nginx /var/run /var/log/nginx && \
+    chmod -R 755 /var/cache/nginx && \
+    chmod -R 755 /var/run && \
+    chmod -R 755 /var/log/nginx
 
-# Change nginx to run on port 3000 (non-privileged port)
-RUN sed -i 's/listen\s*80;/listen 3000;/' /etc/nginx/conf.d/default.conf && \
-    chown -R nginxuser:nginxuser /var/cache/nginx && \
-    chown -R nginxuser:nginxuser /var/log/nginx && \
-    chown -R nginxuser:nginxuser /etc/nginx/conf.d && \
-    touch /var/run/nginx.pid && \
-    chown -R nginxuser:nginxuser /var/run/nginx.pid
-
-USER nginxuser
-
-# Expose port 3000 (non-privileged)
 EXPOSE 3000
 
-# Start nginx
+# Run nginx as non-root user
+USER nginx
+
+# Start nginx in foreground
 CMD ["nginx", "-g", "daemon off;"]
