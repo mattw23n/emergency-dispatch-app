@@ -7,7 +7,9 @@ COPY ./nginx/nginx.conf.template /etc/nginx/conf.d/default.conf.template
 COPY docker-entrypoint.sh .
 RUN chmod +x docker-entrypoint.sh
 
-# Frontend files will be mounted via volume in compose.yml
+# Copy frontend files for Kubernetes deployment
+# Note: Build this from project root with: docker build -f api-gateway/Dockerfile .
+COPY frontend /usr/share/nginx/html
 
 # nosemgrep: dockerfile.security.missing-user-entrypoint.missing-user-entrypoint
 ENTRYPOINT ["/docker-entrypoint.sh"]
