@@ -59,13 +59,16 @@ def create_rabbitmq_connection():
 
 def rabbitmq_consumer():
     """
-    Consume from all event queues and push to the event_queue for SSE streaming.
-    Monitors these routing key patterns:
+    Consume from the exchange using a temporary, exclusive queue.
+    This service is a pure listener/monitor - it creates NO durable queues.
+    
+    Listens to routing key patterns:
     - event.wearable.vitals
     - event.triage.status
     - event.dispatch.*
     - event.notification.*
     - event.billing.*
+    - dispatch.updates.*
     """
     print("[Consumer] Starting RabbitMQ consumer thread...")
 
@@ -73,16 +76,27 @@ def rabbitmq_consumer():
         connection = create_rabbitmq_connection()
         channel = connection.channel()
 
-        # Declare exchange (should already exist, but this is idempotent)
+        # Declare exchange (should already exist from events-manager)
+        exchange_name = os.environ.get("AMQP_EXCHANGE_NAME", "amqp.topic")
+        exchange_type = os.environ.get("AMQP_EXCHANGE_TYPE", "topic")
+        
         channel.exchange_declare(
-            exchange='amqp.topic',
-            exchange_type='topic',
+            exchange=exchange_name,
+            exchange_type=exchange_type,
             durable=True
         )
 
-        # Create a temporary queue for this consumer to listen to ALL events
-        result = channel.queue_declare(queue='', exclusive=True)
+        # Create a temporary, exclusive, auto-delete queue
+        # This queue will be automatically deleted when the connection closes
+        # queue='' means RabbitMQ generates a unique name (amqp.gen-*)
+        result = channel.queue_declare(
+            queue='',
+            exclusive=True,  # Only this connection can access it
+            auto_delete=True,  # Auto-delete when consumer disconnects
+            durable=False  # Not durable (temporary)
+        )
         queue_name = result.method.queue
+        print(f"[Consumer] Created temporary queue: {queue_name}")
 
         # Bind to all event patterns we want to monitor
         routing_keys = [
@@ -96,7 +110,7 @@ def rabbitmq_consumer():
 
         for routing_key in routing_keys:
             channel.queue_bind(
-                exchange='amqp.topic',
+                exchange=exchange_name,
                 queue=queue_name,
                 routing_key=routing_key
             )
