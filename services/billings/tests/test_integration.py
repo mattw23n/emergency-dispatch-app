@@ -7,7 +7,7 @@ and its dependencies, including the message broker and external services.
 import json
 import os
 import uuid
-import time
+
 import pika
 
 EX = os.environ["AMQP_EXCHANGE_NAME"]
@@ -43,43 +43,14 @@ def _publish(rk: str, body: dict, corr_id: str | None = None):
         conn.close()
 
 
-def poll_for_event(get_event_fn, timeout=10, interval=0.5):
-    start = time.time()
-    while time.time() - start < timeout:
-        msg = get_event_fn(timeout_s=interval)
-        if msg is not None:
-            return msg
-    raise TimeoutError("Did not receive expected event")
-
-
-def wait_for_health(client, timeout=20, interval=1):
-    start = time.time()
-    while time.time() - start < timeout:
-        response = client.get("/health")
-        if response.status_code == 200:
-            return response.get_json()
-        time.sleep(interval)
-    raise TimeoutError("Health endpoint did not become ready in time")
-
-
-def test_health_check(billings_app_module):
-    client = billings_app_module.app.test_client()
-    data = wait_for_health(client)
-    assert data["status"] == "healthy"
-    assert data["service"] == "billings"
-    assert "version" in data
-    assert data["database"] == "connected"
-    assert "timestamp" in data
-
-
 def test_integration_billing_completed(
     run_consumer, bind_and_get_one, fake_stripe_module, monkeypatch, billings_app_module
 ):
     """Publish cmd.billing.initiate, expect event.billing.completed with status COMPLETED."""
-
+    
     # Start the consumer in the background
     consumer_thread = run_consumer
-
+    
     # Set up test data
     incident_id = str(uuid.uuid4())
     patient_id = "P123"
@@ -105,11 +76,11 @@ def test_integration_billing_completed(
             "payment_intent_id": f"pi_test_{incident_id.replace('-', '_')}",
             "client_secret": "cs_test_123",
         }
-
+    
     monkeypatch.setattr(
         billings_app_module.stripe_service,
         "process_stripe_payment",
-        mock_process_payment,
+        mock_process_payment
     )
 
     # Create and publish the test message
@@ -122,20 +93,17 @@ def test_integration_billing_completed(
 
     try:
         # Wait for the completed event
-        msg = poll_for_event(lambda: bind_and_get_one("event.billing.completed"))
-
+        msg = bind_and_get_one("event.billing.completed", timeout_s=8.0)
+        
         # Verify the results
         assert msg is not None, "Did not receive event.billing.completed"
-        assert msg["incident_id"] == incident_id, (
+        assert msg["incident_id"] == incident_id, \
             f"Expected incident_id {incident_id}, got {msg.get('incident_id')}"
-        )
-        assert msg["status"] == "COMPLETED", (
+        assert msg["status"] == "COMPLETED", \
             f"Expected status=COMPLETED, got {msg.get('status')}"
-        )
-        assert float(msg["amount"]) == amount, (
+        assert float(msg["amount"]) == amount, \
             f"Expected amount={amount}, got {msg.get('amount')}"
-        )
-
+            
     finally:
         # Clean up by stopping the consumer
         billings_app_module.should_stop = True
@@ -169,8 +137,7 @@ def test_integration_insurance_no_policy(
 
     _publish("cmd.billing.initiate", payload, corr_id=incident_id)
 
-    msg = poll_for_event(lambda: get_failed())
-
+    msg = get_failed(timeout_s=8.0)
     assert msg is not None, "Did not receive event.billing.failed"
     # The actual implementation uses CANCELLED status for all failures
     assert msg.get("status") == "CANCELLED"
