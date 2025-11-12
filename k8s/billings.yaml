@@ -70,7 +70,7 @@ spec:
     kind: Deployment
     name: billings
   minReplicas: 2     # Minimum pods
-  maxReplicas: 4     # Maximum pods
+  maxReplicas: 3     # Maximum pods
   metrics:
     - type: Resource
       resource:
