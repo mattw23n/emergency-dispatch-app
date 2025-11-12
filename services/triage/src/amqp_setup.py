@@ -73,7 +73,11 @@ class AMQPSetup:
         )
 
         # Declare queue for consuming wearable data
-        ch.queue_declare(queue=self.Q_WEARABLE_DATA, durable=True)
+        ch.queue_declare(
+            queue=self.Q_WEARABLE_DATA,
+            durable=True,
+            arguments={"x-single-active-consumer": True},
+        )
 
         # Bind queue to exchange with wearable data routing key
         ch.queue_bind(
