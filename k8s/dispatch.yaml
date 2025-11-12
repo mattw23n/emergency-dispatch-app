@@ -29,7 +29,7 @@ spec:
     spec:
       containers:
         - name: dispatch
-          image: registry.gitlab.com/cs302-2025/g2-team5/services/dispatch/main:9d3eee49bed19b662437d205bc8220ff3a21f50f
+          image: registry.gitlab.com/cs302-2025/g2-team5/services/dispatch/main:f3601a21e003ea36e01a8c418a9b41871f786789
           imagePullPolicy: Always
           ports:
             - containerPort: 8081
