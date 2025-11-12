@@ -29,7 +29,7 @@ spec:
     spec:
       containers:
         - name: billings
-          image: registry.gitlab.com/cs302-2025/g2-team5/services/billings/main:174af6b9635dbaff290e241789e07e1afc0ee9c9
+          image: registry.gitlab.com/cs302-2025/g2-team5/services/billings/main:af2c4977cf7a74de2548853c336454e03c807bf8
           imagePullPolicy: Always
           ports:
             - containerPort: 5100
