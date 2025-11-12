@@ -99,7 +99,7 @@ class AMQPSetup:
             exchange=self.exchange_name, exchange_type=self.exchange_type, durable=True
         )
         # Scenario 1: queue/bindings
-        ch.queue_declare(queue=self.Q_TRIAGE_ACTIONABLE, durable=True, arguments={"x-single-active-consumer": True})
+        ch.queue_declare(queue=self.Q_TRIAGE_ACTIONABLE, durable=True)
         ch.queue_bind(
             queue=self.Q_TRIAGE_ACTIONABLE,
             exchange=self.exchange_name,
@@ -112,7 +112,7 @@ class AMQPSetup:
         )
 
         # Scenario 2 queue/bindings
-        ch.queue_declare(queue=self.Q_DISPATCH_STATUS, durable=True, arguments={"x-single-active-consumer": True})
+        ch.queue_declare(queue=self.Q_DISPATCH_STATUS, durable=True)
         ch.queue_bind(
             queue=self.Q_DISPATCH_STATUS,
             exchange=self.exchange_name,
@@ -135,7 +135,7 @@ class AMQPSetup:
         )
 
         # Scenario 3 queue/bindings
-        ch.queue_declare(queue=self.Q_BILLING_STATUS, durable=True, arguments={"x-single-active-consumer": True})
+        ch.queue_declare(queue=self.Q_BILLING_STATUS, durable=True)
         ch.queue_bind(
             queue=self.Q_BILLING_STATUS,
             exchange=self.exchange_name,
