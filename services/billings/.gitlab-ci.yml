@@ -204,8 +204,8 @@ smoke-test-image:
       while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
         echo "Health check attempt $((RETRY_COUNT + 1))/$MAX_RETRIES..."
         
-        # Use curl from the GitLab runner host to check the exposed port
-        if curl -sf http://localhost:5100/health > /dev/null 2>&1; then
+        # Use docker exec to curl from inside the billings container
+        if docker exec billings-test wget -q -O- http://127.0.0.1:5100/health > /dev/null 2>&1; then
           echo "✓ Health check passed - service is fully operational"
           SUCCESS=1
           break
@@ -232,7 +232,7 @@ smoke-test-image:
     # Verify the response shows correct service name
     - |
       echo "Verifying health endpoint response..."
-      HEALTH_RESPONSE=$(curl -s http://localhost:5100/health)
+      HEALTH_RESPONSE=$(docker exec billings-test wget -q -O- http://127.0.0.1:5100/health)
       echo "Health response: $HEALTH_RESPONSE"
       
       if echo "$HEALTH_RESPONSE" | grep -q '"service":[[:space:]]*"billings"'; then
