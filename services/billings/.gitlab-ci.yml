@@ -2,7 +2,6 @@ stages:
   - Static Analysis
   - Security Testing
   - Test
-  - Smoke Test
   - Release
   - Deploy
 
