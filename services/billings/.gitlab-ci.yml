@@ -199,15 +199,15 @@ smoke-test-image:
     - |
       MAX_RETRIES=5
       RETRY_COUNT=0
-      HTTP_CODE=0
+      SUCCESS=0
       
       while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
-        # Use docker exec with Python's urllib (no curl needed in container)
-        HTTP_CODE=$(docker exec billings-test python -c "import urllib.request; response = urllib.request.urlopen('http://localhost:5100/health', timeout=5); print(response.status)" 2>/dev/null || echo "000")
-        echo "Health check attempt $((RETRY_COUNT + 1))/$MAX_RETRIES: HTTP $HTTP_CODE"
+        echo "Health check attempt $((RETRY_COUNT + 1))/$MAX_RETRIES..."
         
-        if [ "$HTTP_CODE" = "200" ]; then
-          echo "Health check passed - service is fully operational"
+        # Use curl from the GitLab runner host to check the exposed port
+        if curl -sf http://localhost:5100/health > /dev/null 2>&1; then
+          echo "✓ Health check passed - service is fully operational"
+          SUCCESS=1
           break
         fi
         
@@ -218,8 +218,8 @@ smoke-test-image:
         fi
       done
       
-      if [ "$HTTP_CODE" != "200" ]; then
-        echo "Health check failed after $MAX_RETRIES attempts with HTTP $HTTP_CODE"
+      if [ "$SUCCESS" != "1" ]; then
+        echo "✗ Health check failed after $MAX_RETRIES attempts"
         echo "=== Billings logs ==="
         docker logs billings-test
         echo "=== MySQL logs ==="
@@ -231,11 +231,25 @@ smoke-test-image:
     
     # Verify the response shows correct service name
     - |
-      HEALTH_RESPONSE=$(docker exec billings-test python -c "import urllib.request; response = urllib.request.urlopen('http://localhost:5100/health', timeout=5); print(response.read().decode())" 2>/dev/null)
+      echo "Verifying health endpoint response..."
+      HEALTH_RESPONSE=$(curl -s http://localhost:5100/health)
       echo "Health response: $HEALTH_RESPONSE"
-      echo "$HEALTH_RESPONSE" | grep -q '"service":[[:space:]]*"billings"' || (echo "Service name mismatch!" && exit 1)
-      echo "$HEALTH_RESPONSE" | grep -q '"status":[[:space:]]*"ok"' || (echo "Service status not ok!" && exit 1)
-      echo "Billings service health confirmed"
+      
+      if echo "$HEALTH_RESPONSE" | grep -q '"service":[[:space:]]*"billings"'; then
+        echo "✓ Service name confirmed: billings"
+      else
+        echo "✗ Service name mismatch!"
+        exit 1
+      fi
+      
+      if echo "$HEALTH_RESPONSE" | grep -q '"status":[[:space:]]*"ok"'; then
+        echo "✓ Service status: ok"
+      else
+        echo "✗ Service status not ok!"
+        exit 1
+      fi
+      
+      echo "✓ Billings service health confirmed"
     
     # Verify RabbitMQ consumer is running (check logs for connection message)
     - |
