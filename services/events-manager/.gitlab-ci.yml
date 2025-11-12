@@ -52,6 +52,31 @@ gitleaks:
     entrypoint: [""]  # override entrypoint so we call gitleaks directly
   script: ["gitleaks detect --source . --no-git -v"]
 
+unit-tests:
+  stage: Test
+  image: python:3.12-slim
+  before_script:
+    - python -V
+    - python -m pip install -r requirements.txt
+    - python -m pip install pytest pytest-cov
+
+  script:
+    - export RABBITMQ_HOST=rabbitmq
+    - export RABBITMQ_PORT=5672
+    - export RABBITMQ_USER=guest
+    - export RABBITMQ_PASSWORD=guest
+    - export RABBITMQ_VHOST=/
+    - export AMQP_EXCHANGE_NAME=amqp.topic
+    - export AMQP_EXCHANGE_TYPE=topic
+    - python -m pytest tests/test_unit.py -v --cov=src --cov-report=xml
+  artifacts:
+    when: always
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: coverage.xml
+  coverage: '/^TOTAL\s+\d+\s+\d+\s+(\d+\.\d+)%$/'
+
 integration-tests:
   stage: Test
   image: docker:28.3.2
