@@ -5,9 +5,31 @@ from src.app import app
 import pika
 import time
 import json
+import subprocess
+import requests
 
 
-# Create a reusable test client for FastAPI
+def test_app_startup_and_healthcheck():
+    """Starts the real FastAPI app using Uvicorn and checks /health endpoint"""
+    process = subprocess.Popen(
+        ["uvicorn", "src.app:app", "--host", "127.0.0.1", "--port", "8000"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+
+    # Allow some time for the app to fully start
+    time.sleep(3)
+
+    try:
+        response = requests.get("http://127.0.0.1:8000/health")
+        assert response.status_code == 200
+        assert response.json() == {"status": "ok"}
+    finally:
+        process.terminate()
+        process.wait(timeout=5)
+
+
+# Create a reusable test client for FastAPI (in-memory)
 @pytest.fixture(scope="module")
 def client():
     return TestClient(app)
