@@ -71,7 +71,7 @@ unit-tests:
     - python -m pip install -r requirements.txt
     - python -m pip install pytest pytest-cov
   script:
-    - python -m pytest tests/test_unit.py -v --cov=src --cov-report=xml --cov-report=term
+    - python -m pytest tests/test_unit.py -v --cov=src --cov-report=xml
   artifacts:
     when: always
     reports:
