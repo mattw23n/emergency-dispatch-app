@@ -18,7 +18,9 @@ metadata:
   labels:
     app: triage
 spec:
-  replicas: 2
+  replicas: 1 #Only one triage at a time
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: triage
