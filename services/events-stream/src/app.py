@@ -61,7 +61,7 @@ def rabbitmq_consumer():
     """
     Consume from the exchange using a temporary, exclusive queue.
     This service is a pure listener/monitor - it creates NO durable queues.
-    
+
     Listens to routing key patterns:
     - event.wearable.vitals
     - event.triage.status
@@ -79,7 +79,7 @@ def rabbitmq_consumer():
         # Declare exchange (should already exist from events-manager)
         exchange_name = os.environ.get("AMQP_EXCHANGE_NAME", "amqp.topic")
         exchange_type = os.environ.get("AMQP_EXCHANGE_TYPE", "topic")
-        
+
         channel.exchange_declare(
             exchange=exchange_name,
             exchange_type=exchange_type,
