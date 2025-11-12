@@ -90,7 +90,7 @@ def rabbitmq_consumer():
         # This queue will be automatically deleted when the connection closes
         # queue='' means RabbitMQ generates a unique name (amqp.gen-*)
         result = channel.queue_declare(
-            queue='',
+            queue='Events Stream',
             exclusive=True,  # Only this connection can access it
             auto_delete=True,  # Auto-delete when consumer disconnects
             durable=False  # Not durable (temporary)
