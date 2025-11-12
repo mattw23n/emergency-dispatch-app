@@ -3,6 +3,7 @@ import os
 import json
 import time
 import pika
+import app as events_app
 
 
 # ---- robust connection params w/ retries to avoid race with broker startup ----
@@ -248,3 +249,18 @@ def test_s2_dispatch_arrived_emits_alert_and_billing_initiate(em_runner):
     assert cmd["type"] == "InitiateBilling"
     assert cmd["incident_id"] == "s2-arr-001"
     assert cmd["patient_id"] == "P999"
+
+
+def test_health_ok():
+    """Test the health check endpoint returns 200 OK when service is healthy."""
+    # Create a test client
+    client = events_app.app.test_client()
+
+    # Make a request to the health endpoint
+    response = client.get("/health")
+
+    # Verify the response
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data["status"] == "ok"
+    assert data["service"] == "events-manager"
