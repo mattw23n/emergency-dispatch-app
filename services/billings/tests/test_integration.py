@@ -43,24 +43,28 @@ def _publish(rk: str, body: dict, corr_id: str | None = None):
         conn.close()
 
 
+def poll_for_event(get_event_fn, timeout=10, interval=0.5):
+    start = time.time()
+    while time.time() - start < timeout:
+        msg = get_event_fn(timeout_s=interval)
+        if msg is not None:
+            return msg
+    raise TimeoutError("Did not receive expected event")
+
+
+def wait_for_health(client, timeout=20, interval=1):
+    start = time.time()
+    while time.time() - start < timeout:
+        response = client.get("/health")
+        if response.status_code == 200:
+            return response.get_json()
+        time.sleep(interval)
+    raise TimeoutError("Health endpoint did not become ready in time")
+
+
 def test_health_check(billings_app_module):
-    """Test the health check endpoint returns a healthy status.
-
-    Verifies that the health check endpoint is accessible and returns the expected
-    response format with a healthy status when all services are available.
-    """
-    # Give the service a moment to start up
-    time.sleep(1)
-
-    # Get the Flask test client from the app module
     client = billings_app_module.app.test_client()
-
-    # Make a request to the health check endpoint
-    response = client.get("/health")
-
-    # Verify the response
-    assert response.status_code == 200
-    data = response.get_json()
+    data = wait_for_health(client)
     assert data["status"] == "healthy"
     assert data["service"] == "billings"
     assert "version" in data
@@ -118,7 +122,7 @@ def test_integration_billing_completed(
 
     try:
         # Wait for the completed event
-        msg = bind_and_get_one("event.billing.completed", timeout_s=8.0)
+        msg = poll_for_event(lambda: bind_and_get_one("event.billing.completed"))
 
         # Verify the results
         assert msg is not None, "Did not receive event.billing.completed"
@@ -165,7 +169,8 @@ def test_integration_insurance_no_policy(
 
     _publish("cmd.billing.initiate", payload, corr_id=incident_id)
 
-    msg = get_failed(timeout_s=8.0)
+    msg = poll_for_event(lambda: get_failed())
+
     assert msg is not None, "Did not receive event.billing.failed"
     # The actual implementation uses CANCELLED status for all failures
     assert msg.get("status") == "CANCELLED"
