@@ -63,7 +63,7 @@ unit-tests:
     - python -m pip install -r requirements.txt
     - python -m pip install pytest pytest-cov
   script:
-    - export RABBITMQ_HOST=localhost
+    - export RABBITMQ_HOST=rabbitmq
     - export RABBITMQ_PORT=5672
     - export RABBITMQ_USER=guest
     - export RABBITMQ_PASSWORD=guest
