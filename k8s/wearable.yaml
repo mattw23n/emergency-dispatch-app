@@ -31,7 +31,7 @@ spec:
     spec:
       containers:
         - name: wearable
-          image: registry.gitlab.com/cs302-2025/g2-team5/services/wearable/main:6d89e204c39f9b8c853b1740e77f6a946e68282b
+          image: registry.gitlab.com/cs302-2025/g2-team5/services/wearable/main:3693c408fbdb6e7d97196a7874d20ecf31fc2f61
           imagePullPolicy: Always
           ports:
             - containerPort: 5000
