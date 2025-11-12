@@ -7,7 +7,7 @@ stages:
 
 flake8:
   stage: Static Analysis
-  image: python:3.13-slim
+  image: python:3.12-slim
   before_script:
     - python -V
     - python -m pip install flake8
@@ -20,7 +20,7 @@ flake8:
 
 pylint:
   stage: Static Analysis
-  image: python:3.13-slim
+  image: python:3.12-slim
   before_script:
     - python -V
     - python -m pip install -r requirements.txt
@@ -50,6 +50,23 @@ gitleaks:
     name: zricethezav/gitleaks:latest
     entrypoint: [""]  # override entrypoint so we call gitleaks directly
   script: ["gitleaks detect --source . --no-git -v"]
+
+unit-tests:
+  stage: Test
+  image: python:3.12-slim
+  before_script:
+    - python -V
+    - python -m pip install -r requirements.txt
+    - python -m pip install pytest pytest-cov
+  script:
+    - python -m pytest tests/test_unit.py -v --cov=src --cov-report=xml --cov-report=term
+  artifacts:
+    when: always
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: coverage.xml
+  coverage: '/^TOTAL\s+\d+\s+\d+\s+(\d+%)$/'
 
 integration-tests:
   stage: Test
