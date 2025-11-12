@@ -108,7 +108,7 @@ def create_app() -> Flask:
 
     @app.get("/health")
     def health():
-        return jsonify(status="ok", service="events-manager"), 200
+        return jsonify(status="ok", service="events-manager"), 500
 
     @app.get("/status")
     def status():
