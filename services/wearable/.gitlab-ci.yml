@@ -55,6 +55,23 @@ gitleaks:
     entrypoint: [""]  # override entrypoint so we call gitleaks directly
   script: ["gitleaks detect --source . --no-git -v"]
 
+unit-tests:
+  stage: Test
+  image: python:3.13-slim
+  before_script:
+    - python -V
+    - python -m pip install -r requirements.txt
+    - python -m pip install pytest pytest-cov
+  script:
+    - python -m pytest tests/test_unit.py -v --cov=src --cov-report=xml
+  artifacts:
+    when: always
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: coverage.xml
+  coverage: '/^TOTAL\s+\d+\s+\d+\s+(\d+\.\d+)%$/'
+
 integration-tests:
   stage: Test
   image: docker:28.3.2
@@ -110,8 +127,7 @@ smoke-test-image:
     # Wait for RabbitMQ to be ready
     - echo "Waiting for RabbitMQ to start..."
     - sleep 15
-    - docker logs rabbitmq-test | tail -10
-    
+
     # Run wearable container connected to the same network
     - |
       docker run -d --name wearable-test \
@@ -154,7 +170,7 @@ smoke-test-image:
         echo "Health check attempt $((RETRY_COUNT + 1))/$MAX_RETRIES: HTTP $HTTP_CODE"
         
         if [ "$HTTP_CODE" = "200" ]; then
-          echo "✓ Health check passed - service is fully operational"
+          echo "Health check passed - service is fully operational"
           break
         fi
         
@@ -166,7 +182,7 @@ smoke-test-image:
       done
       
       if [ "$HTTP_CODE" != "200" ]; then
-        echo "✗ Health check failed after $MAX_RETRIES attempts with HTTP $HTTP_CODE"
+        echo "Health check failed after $MAX_RETRIES attempts with HTTP $HTTP_CODE"
         echo "=== Wearable logs ==="
         docker logs wearable-test
         echo "=== RabbitMQ logs ==="
@@ -179,14 +195,14 @@ smoke-test-image:
       HEALTH_RESPONSE=$(docker exec wearable-test python -c "import urllib.request, json; response = urllib.request.urlopen('http://localhost:5000/health', timeout=5); print(response.read().decode())" 2>/dev/null)
       echo "Health response: $HEALTH_RESPONSE"
       echo "$HEALTH_RESPONSE" | grep -q '"rabbitmq_connected":[[:space:]]*true' || (echo "RabbitMQ not connected!" && exit 1)
-      echo "✓ RabbitMQ connection confirmed"
+      echo "RabbitMQ connection confirmed"
     
     # Test that wearable is publishing messages
     - echo "Checking if messages are being sent..."
     - sleep 5
     - |
       HEALTH_RESPONSE=$(docker exec wearable-test python -c "import urllib.request; response = urllib.request.urlopen('http://localhost:5000/health', timeout=5); print(response.read().decode())" 2>/dev/null)
-      echo "$HEALTH_RESPONSE" | grep -q '"messages_sent"' && echo "✓ Message publishing is working"
+      echo "$HEALTH_RESPONSE" | grep -q '"messages_sent"' && echo "Message publishing is working"
     
     # Show logs for verification
     - echo "=== Wearable logs (last 20 lines) ==="
