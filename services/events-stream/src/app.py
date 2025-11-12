@@ -62,13 +62,16 @@ def rabbitmq_consumer():
     Consume from the exchange using a temporary, exclusive queue.
     This service is a pure listener/monitor - it creates NO durable queues.
 
-    Listens to routing key patterns:
-    - event.wearable.vitals
-    - event.triage.status
-    - event.dispatch.*
-    - event.notification.*
-    - event.billing.*
-    - dispatch.updates.*
+    Uses '#' wildcard to bind to all routing keys, then filters out:
+    - triage.* messages (excluded from stream)
+    
+    Streams all other messages including:
+    - wearable.data
+    - dispatch.*
+    - billing.*
+    - notification.*
+    - cmd.*
+    - events-manager.q.*
     """
     print("[Consumer] Starting RabbitMQ consumer thread...")
 
@@ -99,13 +102,9 @@ def rabbitmq_consumer():
         print(f"[Consumer] Created temporary queue: {queue_name}")
 
         # Bind to all event patterns we want to monitor
+        # Using '#' wildcard to match all messages (will filter triage in callback)
         routing_keys = [
-            'event.wearable.vitals',
-            'event.triage.status',
-            'event.dispatch.*',
-            'event.notification.*',
-            'event.billing.*',
-            'dispatch.updates.*',
+            '#',  # Match all routing keys
         ]
 
         for routing_key in routing_keys:
@@ -121,18 +120,20 @@ def rabbitmq_consumer():
         def callback(ch, method, properties, body):
             """Handle incoming messages and push to SSE queue."""
             try:
+                # Extract routing key
+                routing_key = method.routing_key
+                
+                # Filter out triage messages - we don't want to stream these
+                if routing_key.startswith('triage'):
+                    return  # Skip triage messages
+                
                 # Parse message
                 message_data = json.loads(body)
-
-                # Extract key information
-                routing_key = method.routing_key
 
                 # Determine event type from routing key
                 event_type = 'unknown'
                 if 'wearable' in routing_key:
                     event_type = 'wearable'
-                elif 'triage' in routing_key:
-                    event_type = 'triage'
                 elif 'dispatch' in routing_key:
                     event_type = 'dispatch'
                 elif 'notification' in routing_key:
