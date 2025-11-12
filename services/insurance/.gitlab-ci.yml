@@ -32,15 +32,30 @@ trivy:
   stage: Security Testing
   image:
     name: aquasec/trivy:latest
-    entrypoint: [""]     # override entrypoint so we call trivy directly
+    entrypoint: [""] # override entrypoint so we call trivy directly
   script: ["trivy fs --severity CRITICAL,HIGH ."]
 
 gitleaks:
   stage: Security Testing
   image:
     name: zricethezav/gitleaks:latest
-    entrypoint: [""]  # override entrypoint so we call gitleaks directly
+    entrypoint: [""] # override entrypoint so we call gitleaks directly
   script: ["gitleaks detect --source . --no-git -v"]
+
+unit_test:
+  stage: Test
+  image: node:20-slim
+  before_script:
+    - npm install
+  script:
+    - npm test
+  artifacts:
+    when: always
+    reports:
+      junit: test-results.xml
+    paths:
+      - coverage/
+  coverage: '/All files[^|]*\|[^|]*\s+([\d\.]+)/'
 
 integration-tests:
   stage: Test
