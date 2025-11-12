@@ -58,19 +58,18 @@ gitleaks:
 unit-tests:
   stage: Test
   image: python:3.12-slim
-  variables:
-    RABBITMQ_HOST: "localhost"
-    RABBITMQ_PORT: "5672"
-    RABBITMQ_USER: "guest"
-    RABBITMQ_PASSWORD: "guest"
-    RABBITMQ_VHOST: "/"
-    AMQP_EXCHANGE_NAME: "amqp.topic"
-    AMQP_EXCHANGE_TYPE: "topic"
   before_script:
     - python -V
     - python -m pip install -r requirements.txt
     - python -m pip install pytest pytest-cov
   script:
+    - export RABBITMQ_HOST=rabbitmq
+    - export RABBITMQ_PORT=5672
+    - export RABBITMQ_USER=guest
+    - export RABBITMQ_PASSWORD=guest
+    - export RABBITMQ_VHOST=/
+    - export AMQP_EXCHANGE_NAME=amqp.topic
+    - export AMQP_EXCHANGE_TYPE=topic
     - python -m pytest tests/test_unit.py -v --cov=src --cov-report=xml
   artifacts:
     when: always
@@ -78,7 +77,7 @@ unit-tests:
       coverage_report:
         coverage_format: cobertura
         path: coverage.xml
-  coverage: '/^TOTAL\s+\d+\s+\d+\s+(\d+%)$/'
+  coverage: '/^TOTAL\s+\d+\s+\d+\s+(\d+\.\d+)%$/'
 
 integration-tests:
   stage: Test
