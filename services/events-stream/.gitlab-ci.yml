@@ -57,7 +57,7 @@ unit-tests:
   before_script:
     - python -V
     - python -m pip install -r requirements.txt
-    - python -m pip install pytest pytest-cov
+    - python -m pip install pytest pytest-cov requests
   script:
     - python -m pytest tests/test_unit.py -v --cov=src --cov-report=xml
   artifacts:
