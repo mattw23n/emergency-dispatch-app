@@ -29,7 +29,7 @@ spec:
     spec:
       containers:
         - name: events-stream
-          image: registry.gitlab.com/cs302-2025/g2-team5/services/events-stream/main:4852d3d826ba70289bdda74749e3d5794a1889ff
+          image: registry.gitlab.com/cs302-2025/g2-team5/services/events-stream/main:cc8a9adc8981706fddbae474d68aeb3b2e8c601c
           imagePullPolicy: Always
           ports:
             - containerPort: 8090
