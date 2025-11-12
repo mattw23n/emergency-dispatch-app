@@ -144,7 +144,7 @@ smoke-test-image:
     - |
       docker run -d --name dispatch-test \
         --network dispatch-test-network \
-        -p 5001:5001 \
+        -p 8081:8081 \
         -e DB_HOST=mysql-test \
         -e DB_PORT=3306 \
         -e DB_USER=dispatch \
@@ -186,7 +186,7 @@ smoke-test-image:
       
       while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
         # Use docker exec with Python's urllib (no curl needed in container)
-        HTTP_CODE=$(docker exec dispatch-test python -c "import urllib.request; response = urllib.request.urlopen('http://localhost:5001/health', timeout=5); print(response.status)" 2>/dev/null || echo "000")
+        HTTP_CODE=$(docker exec dispatch-test python -c "import urllib.request; response = urllib.request.urlopen('http://localhost:8081/health', timeout=5); print(response.status)" 2>/dev/null || echo "000")
         echo "Health check attempt $((RETRY_COUNT + 1))/$MAX_RETRIES: HTTP $HTTP_CODE"
         
         if [ "$HTTP_CODE" = "200" ]; then
@@ -214,7 +214,7 @@ smoke-test-image:
     
     # Verify the response shows correct service name
     - |
-      HEALTH_RESPONSE=$(docker exec dispatch-test python -c "import urllib.request; response = urllib.request.urlopen('http://localhost:5001/health', timeout=5); print(response.read().decode())" 2>/dev/null)
+      HEALTH_RESPONSE=$(docker exec dispatch-test python -c "import urllib.request; response = urllib.request.urlopen('http://localhost:8081/health', timeout=5); print(response.read().decode())" 2>/dev/null)
       echo "Health response: $HEALTH_RESPONSE"
       echo "$HEALTH_RESPONSE" | grep -q '"service":[[:space:]]*"dispatch-amqp"' || (echo "Service name mismatch!" && exit 1)
       echo "$HEALTH_RESPONSE" | grep -q '"status":[[:space:]]*"ok"' || (echo "Service status not ok!" && exit 1)
