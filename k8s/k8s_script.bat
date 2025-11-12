@@ -197,17 +197,30 @@ if %errorlevel% neq 0 (
 )
 echo %GREEN%[SUCCESS]%NC% API Gateway is ready
 
-REM Get API Gateway URL from minikube
-echo %BLUE%[INFO]%NC% Getting API Gateway URL from minikube...
-for /f "delims=" %%i in ('minikube service api-gateway --url') do set "API_GATEWAY_URL=%%i"
+REM Get API Gateway URL from minikube (handling blocking call)
+echo %BLUE%[INFO]%NC% Starting minikube service tunnel for API Gateway...
+
+REM Start the service in background and capture output to file
+start /b cmd /c "minikube service api-gateway --url > api_gateway_url.temp 2>&1"
+
+REM Wait a moment for the tunnel to establish
+timeout /t 15 /nobreak >nul
+
+REM Read the URL from the file
+set "API_GATEWAY_URL="
+if exist "api_gateway_url.temp" (
+    for /f "delims=" %%i in ('type api_gateway_url.temp ^| findstr "http://"') do set "API_GATEWAY_URL=%%i"
+)
 
 if "%API_GATEWAY_URL%"=="" (
-    echo %RED%[ERROR]%NC% Failed to get API Gateway URL from minikube
+    echo %RED%[ERROR]%NC% Failed to get API Gateway URL from minikube tunnel
     echo %RED%[ERROR]%NC% Make sure API Gateway service is running
+    if exist "api_gateway_url.temp" del "api_gateway_url.temp"
     exit /b 1
 )
 
 echo %GREEN%[SUCCESS]%NC% API Gateway URL: %API_GATEWAY_URL%
+echo %YELLOW%[WARNING]%NC% Minikube tunnel is running in background - keep this terminal open
 
 REM Create frontend ConfigMap with API Gateway URL
 echo %BLUE%[INFO]%NC% Creating frontend configuration with API Gateway URL...
