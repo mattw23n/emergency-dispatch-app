@@ -7,7 +7,7 @@ and its dependencies, including the message broker and external services.
 import json
 import os
 import uuid
-
+import time
 import pika
 
 EX = os.environ["AMQP_EXCHANGE_NAME"]
@@ -43,14 +43,39 @@ def _publish(rk: str, body: dict, corr_id: str | None = None):
         conn.close()
 
 
+def test_health_check(billings_app_module):
+    """Test the health check endpoint returns a healthy status.
+
+    Verifies that the health check endpoint is accessible and returns the expected
+    response format with a healthy status when all services are available.
+    """
+    # Give the service a moment to start up
+    time.sleep(1)
+
+    # Get the Flask test client from the app module
+    client = billings_app_module.app.test_client()
+
+    # Make a request to the health check endpoint
+    response = client.get("/health")
+
+    # Verify the response
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data["status"] == "healthy"
+    assert data["service"] == "billings"
+    assert "version" in data
+    assert data["database"] == "connected"
+    assert "timestamp" in data
+
+
 def test_integration_billing_completed(
     run_consumer, bind_and_get_one, fake_stripe_module, monkeypatch, billings_app_module
 ):
     """Publish cmd.billing.initiate, expect event.billing.completed with status COMPLETED."""
-    
+
     # Start the consumer in the background
     consumer_thread = run_consumer
-    
+
     # Set up test data
     incident_id = str(uuid.uuid4())
     patient_id = "P123"
@@ -76,11 +101,11 @@ def test_integration_billing_completed(
             "payment_intent_id": f"pi_test_{incident_id.replace('-', '_')}",
             "client_secret": "cs_test_123",
         }
-    
+
     monkeypatch.setattr(
         billings_app_module.stripe_service,
         "process_stripe_payment",
-        mock_process_payment
+        mock_process_payment,
     )
 
     # Create and publish the test message
@@ -94,16 +119,19 @@ def test_integration_billing_completed(
     try:
         # Wait for the completed event
         msg = bind_and_get_one("event.billing.completed", timeout_s=8.0)
-        
+
         # Verify the results
         assert msg is not None, "Did not receive event.billing.completed"
-        assert msg["incident_id"] == incident_id, \
+        assert msg["incident_id"] == incident_id, (
             f"Expected incident_id {incident_id}, got {msg.get('incident_id')}"
-        assert msg["status"] == "COMPLETED", \
+        )
+        assert msg["status"] == "COMPLETED", (
             f"Expected status=COMPLETED, got {msg.get('status')}"
-        assert float(msg["amount"]) == amount, \
+        )
+        assert float(msg["amount"]) == amount, (
             f"Expected amount={amount}, got {msg.get('amount')}"
-            
+        )
+
     finally:
         # Clean up by stopping the consumer
         billings_app_module.should_stop = True
