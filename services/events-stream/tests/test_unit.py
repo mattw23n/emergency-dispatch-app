@@ -261,7 +261,12 @@ class TestRabbitMQConsumer:
         consumer_thread.start()
         time.sleep(0.5)
         
-        mock_channel.queue_declare.assert_called_once_with(queue='', exclusive=True)
+        mock_channel.queue_declare.assert_called_once_with(
+            queue='Events Stream', 
+            exclusive=True, 
+            auto_delete=True, 
+            durable=False
+        )
 
     @patch('src.app.create_rabbitmq_connection')
     def test_consumer_binds_to_all_routing_keys(self, mock_create_connection, mock_rabbitmq_connection):
@@ -275,14 +280,9 @@ class TestRabbitMQConsumer:
         consumer_thread.start()
         time.sleep(0.5)
         
-        # Check that queue_bind was called for each routing key
+        # Check that queue_bind was called with '#' wildcard
         expected_routing_keys = [
-            'event.wearable.vitals',
-            'event.triage.status',
-            'event.dispatch.*',
-            'event.notification.*',
-            'event.billing.*',
-            'dispatch.updates.*',
+            '#',  # Wildcard to match all routing keys
         ]
         
         bind_calls = mock_channel.queue_bind.call_args_list
@@ -306,7 +306,7 @@ class TestRabbitMQConsumer:
         consumer_thread.start()
         time.sleep(0.5)
         
-        assert service_health["consumers_active"] == 6
+        assert service_health["consumers_active"] == 1  # Now using single '#' wildcard
 
 
 class TestConsumerCallback:
@@ -470,22 +470,23 @@ class TestConsumerCallback:
 class TestEventTypeDetection:
     """Test suite for event type detection from routing keys."""
 
-    @pytest.mark.parametrize("routing_key,expected_type", [
-        ('event.wearable.vitals', 'wearable'),
-        ('event.triage.status', 'triage'),
-        ('event.dispatch.unit_assigned', 'dispatch'),
-        ('event.dispatch.enroute', 'dispatch'),
-        ('event.notification.email', 'notification'),
-        ('event.notification.sms', 'notification'),
-        ('event.billing.invoice', 'billing'),
-        ('dispatch.updates.patient_vitals', 'dispatch'),
-        ('event.unknown.test', 'unknown'),
+    @pytest.mark.parametrize("routing_key,expected_type,should_filter", [
+        ('wearable.data', 'wearable', False),
+        ('triage.status.critical', None, True),  # Filtered out
+        ('triage.q', None, True),  # Filtered out
+        ('dispatch.unit_assigned', 'dispatch', False),
+        ('dispatch.enroute', 'dispatch', False),
+        ('notification.email', 'notification', False),
+        ('notification.sms', 'notification', False),
+        ('billing.invoice', 'billing', False),
+        ('cmd.dispatch.request', 'dispatch', False),
+        ('unknown.test', 'unknown', False),
     ])
     @patch('src.app.create_rabbitmq_connection')
     def test_routing_key_to_event_type_mapping(
-        self, mock_create_connection, mock_rabbitmq_connection, routing_key, expected_type
+        self, mock_create_connection, mock_rabbitmq_connection, routing_key, expected_type, should_filter
     ):
-        """Test that routing keys are correctly mapped to event types."""
+        """Test that routing keys are correctly mapped to event types and triage is filtered."""
         from src.app import rabbitmq_consumer
         
         mock_connection, mock_channel = mock_rabbitmq_connection
@@ -506,6 +507,10 @@ class TestEventTypeDetection:
             mock_method = Mock()
             mock_method.routing_key = routing_key
             
+            # Clear the queue first
+            while not event_queue.empty():
+                event_queue.get_nowait()
+            
             callback_func(
                 mock_channel,
                 mock_method,
@@ -513,7 +518,13 @@ class TestEventTypeDetection:
                 json.dumps({"test": "data"}).encode()
             )
             
-            if not event_queue.empty():
+            # Check if message was filtered or processed
+            if should_filter:
+                # Triage messages should be filtered - queue should be empty
+                assert event_queue.empty(), f"Triage message {routing_key} should have been filtered"
+            else:
+                # Non-triage messages should be in the queue
+                assert not event_queue.empty(), f"Message {routing_key} should not have been filtered"
                 event = event_queue.get_nowait()
                 assert event['type'] == expected_type
 

@@ -64,7 +64,7 @@ def rabbitmq_consumer():
 
     Uses '#' wildcard to bind to all routing keys, then filters out:
     - triage.* messages (excluded from stream)
-    
+
     Streams all other messages including:
     - wearable.data
     - dispatch.*
@@ -122,11 +122,11 @@ def rabbitmq_consumer():
             try:
                 # Extract routing key
                 routing_key = method.routing_key
-                
+ 
                 # Filter out triage messages - we don't want to stream these
                 if routing_key.startswith('triage'):
                     return  # Skip triage messages
-                
+
                 # Parse message
                 message_data = json.loads(body)
 
