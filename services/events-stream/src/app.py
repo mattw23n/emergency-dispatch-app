@@ -122,7 +122,7 @@ def rabbitmq_consumer():
             try:
                 # Extract routing key
                 routing_key = method.routing_key
- 
+
                 # Filter out triage messages - we don't want to stream these
                 if routing_key.startswith('triage'):
                     return  # Skip triage messages
