@@ -31,7 +31,7 @@ spec:
     spec:
       containers:
         - name: events-manager
-          image: registry.gitlab.com/cs302-2025/g2-team5/services/events-manager/main:f8b4a47dbd42ab3f632d707f15ccf9ab8298d89c
+          image: registry.gitlab.com/cs302-2025/g2-team5/services/events-manager/main:bfff8a1db3be32900311a2be4e7544e6ab249394
           imagePullPolicy: Always
           ports:
             - containerPort: 8011
