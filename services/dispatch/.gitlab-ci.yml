@@ -2,6 +2,7 @@ stages:
   - Static Analysis
   - Security Testing
   - Test
+  - Smoke Test
   - Release
   - Deploy
 
@@ -78,15 +79,176 @@ integration-tests:
   script:
     - docker compose -f ci/compose.test.yaml up --exit-code-from dispatch-pytest
 
-release-image:
-  stage: Release
+build-image:
+  stage: Smoke Test
   image: docker:28.3.2
   services:
     - docker:28.3.2-dind
   before_script:
+    - docker info
+  script:
+    # Build the image with both tags
+    - docker build --pull -t "$CI_REGISTRY_IMAGE/$CI_COMMIT_BRANCH:latest" -t "$CI_REGISTRY_IMAGE/$CI_COMMIT_BRANCH:$CI_COMMIT_SHA" .
+    # Save image metadata for next stage
+    - echo "$CI_REGISTRY_IMAGE/$CI_COMMIT_BRANCH:$CI_COMMIT_SHA" > image_name.txt
+  artifacts:
+    paths:
+      - image_name.txt
+    expire_in: 20 min
+
+smoke-test-image:
+  stage: Smoke Test
+  image: docker:28.3.2
+  services:
+    - docker:28.3.2-dind
+  needs:
+    - build-image
+  before_script:
+    - apk add --no-cache curl
+    - docker info
+  script:
+    # Rebuild image from cache (fast since layers exist)
+    - docker build -t "$CI_REGISTRY_IMAGE/$CI_COMMIT_BRANCH:$CI_COMMIT_SHA" .
+    
+    # Create a dedicated network for the smoke test
+    - docker network create dispatch-test-network
+    
+    # Start MySQL database container
+    - |
+      docker run -d --name mysql-test \
+        --network dispatch-test-network \
+        -e MYSQL_ROOT_PASSWORD=root \
+        -e MYSQL_DATABASE=dispatch_db \
+        -e MYSQL_USER=dispatch \
+        -e MYSQL_PASSWORD=dispatch123 \
+        mysql:8.0
+    
+    # Start RabbitMQ container
+    - |
+      docker run -d --name rabbitmq-test \
+        --network dispatch-test-network \
+        -e RABBITMQ_DEFAULT_USER=guest \
+        -e RABBITMQ_DEFAULT_PASS=guest \
+        rabbitmq:3.13-management-alpine
+    
+    # Wait for MySQL to be ready
+    - echo "Waiting for MySQL to start..."
+    - sleep 20
+    - docker exec mysql-test mysqladmin ping -h localhost -u root -proot --silent || (echo "MySQL not ready" && docker logs mysql-test && exit 1)
+    
+    # Wait for RabbitMQ to be ready
+    - echo "Waiting for RabbitMQ to start..."
+    - sleep 15
+
+    # Run dispatch container connected to the same network
+    - |
+      docker run -d --name dispatch-test \
+        --network dispatch-test-network \
+        -p 5001:5001 \
+        -e DB_HOST=mysql-test \
+        -e DB_PORT=3306 \
+        -e DB_USER=dispatch \
+        -e DB_PASSWORD=dispatch123 \
+        -e DB_NAME=dispatch_db \
+        -e RABBITMQ_HOST=rabbitmq-test \
+        -e RABBITMQ_PORT=5672 \
+        -e RABBITMQ_USER=guest \
+        -e RABBITMQ_PASSWORD=guest \
+        -e RABBITMQ_VHOST=/ \
+        -e AMQP_EXCHANGE_NAME=amqp.topic \
+        -e AMQP_EXCHANGE_TYPE=topic \
+        -e AMQP_QUEUE_NAME=dispatch \
+        -e GOOGLE_API_KEY=test-api-key \
+        "$CI_REGISTRY_IMAGE/$CI_COMMIT_BRANCH:$CI_COMMIT_SHA"
+    
+    # Wait for Flask app to start and connect to dependencies
+    - echo "Waiting for dispatch service to start..."
+    - sleep 20
+    
+    # Check if containers are still running
+    - docker ps | grep dispatch-test || (echo "Dispatch container crashed!" && docker logs dispatch-test && exit 1)
+    - docker ps | grep mysql-test || (echo "MySQL container crashed!" && docker logs mysql-test && exit 1)
+    - docker ps | grep rabbitmq-test || (echo "RabbitMQ container crashed!" && docker logs rabbitmq-test && exit 1)
+    
+    # Show dispatch logs to see if Flask started
+    - echo "=== Dispatch startup logs ==="
+    - docker logs dispatch-test 2>&1 | tail -30
+    
+    # Wait a bit more for Flask to be fully ready
+    - echo "Waiting additional time for Flask to be ready..."
+    - sleep 10
+    
+    # Test health endpoint with retries - should return 200
+    - |
+      MAX_RETRIES=5
+      RETRY_COUNT=0
+      HTTP_CODE=0
+      
+      while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+        # Use docker exec with Python's urllib (no curl needed in container)
+        HTTP_CODE=$(docker exec dispatch-test python -c "import urllib.request; response = urllib.request.urlopen('http://localhost:5001/health', timeout=5); print(response.status)" 2>/dev/null || echo "000")
+        echo "Health check attempt $((RETRY_COUNT + 1))/$MAX_RETRIES: HTTP $HTTP_CODE"
+        
+        if [ "$HTTP_CODE" = "200" ]; then
+          echo "Health check passed - service is fully operational"
+          break
+        fi
+        
+        RETRY_COUNT=$((RETRY_COUNT + 1))
+        if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
+          echo "Retrying in 5 seconds..."
+          sleep 5
+        fi
+      done
+      
+      if [ "$HTTP_CODE" != "200" ]; then
+        echo "Health check failed after $MAX_RETRIES attempts with HTTP $HTTP_CODE"
+        echo "=== Dispatch logs ==="
+        docker logs dispatch-test
+        echo "=== MySQL logs ==="
+        docker logs mysql-test
+        echo "=== RabbitMQ logs ==="
+        docker logs rabbitmq-test
+        exit 1
+      fi
+    
+    # Verify the response shows correct service name
+    - |
+      HEALTH_RESPONSE=$(docker exec dispatch-test python -c "import urllib.request; response = urllib.request.urlopen('http://localhost:5001/health', timeout=5); print(response.read().decode())" 2>/dev/null)
+      echo "Health response: $HEALTH_RESPONSE"
+      echo "$HEALTH_RESPONSE" | grep -q '"service":[[:space:]]*"dispatch-amqp"' || (echo "Service name mismatch!" && exit 1)
+      echo "$HEALTH_RESPONSE" | grep -q '"status":[[:space:]]*"ok"' || (echo "Service status not ok!" && exit 1)
+      echo "Dispatch service health confirmed"
+    
+    # Verify RabbitMQ consumer is running (check logs for connection message)
+    - |
+      echo "Checking RabbitMQ consumer status..."
+      docker logs dispatch-test 2>&1 | grep -q "Connected to RabbitMQ" && echo "RabbitMQ consumer confirmed" || echo "Warning: RabbitMQ consumer status unclear"
+    
+    # Show logs for verification
+    - echo "=== Dispatch logs (last 20 lines) ==="
+    - docker logs dispatch-test 2>&1 | tail -20
+    
+    # Cleanup
+    - docker stop dispatch-test mysql-test rabbitmq-test || true
+    - docker rm dispatch-test mysql-test rabbitmq-test || true
+    - docker network rm dispatch-test-network || true
+  allow_failure: false
+
+push-image:
+  stage: Release
+  image: docker:28.3.2
+  services:
+    - docker:28.3.2-dind
+  needs:
+    - build-image
+    - smoke-test-image
+  before_script:
     - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" $CI_REGISTRY
   script:
-    - docker build --pull -t "$CI_REGISTRY_IMAGE/$CI_COMMIT_BRANCH:latest" -t "$CI_REGISTRY_IMAGE/$CI_COMMIT_BRANCH:$CI_COMMIT_SHA" .
+    # Rebuild image from cache (fast since layers exist)
+    - docker build -t "$CI_REGISTRY_IMAGE/$CI_COMMIT_BRANCH:latest" -t "$CI_REGISTRY_IMAGE/$CI_COMMIT_BRANCH:$CI_COMMIT_SHA" .
+    # Push all tags
     - docker push "$CI_REGISTRY_IMAGE/$CI_COMMIT_BRANCH" --all-tags
 
 update_gitops_manifest:
@@ -94,6 +256,8 @@ update_gitops_manifest:
   image: alpine:latest
   variables:
     GIT_STRATEGY: none
+  needs:
+    - push-image
   before_script:
     - apk add --no-cache git yq
     - git config --global user.email "gitlab-ci@${CI_PROJECT_PATH}.com"
@@ -134,8 +298,6 @@ update_gitops_manifest:
   rules:
     - if: '$CI_COMMIT_BRANCH == "main"'
       when: on_success
-  dependencies:
-    - release-image
 
 # # based on: https://gitlab.com/gitlab-org/gitlab/-/blob/master/lib/gitlab/ci/templates/Docker.gitlab-ci.yml
 # release-image:
