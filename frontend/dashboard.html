@@ -660,10 +660,11 @@
     <script>
         // Dynamic API base URL - uses current hostname with api-gateway port
         const API_GATEWAY_URL = '${API_GATEWAY_URL}' || 'http://localhost:30080';
-        const API_BASE = API_GATEWAY_URL + '/api/v1';
-        const SSE_ENDPOINT = API_GATEWAY_URL + '/api/v1/events';
+        const API_BASE = '${API_GATEWAY_URL}/api/v1';
+        const SSE_ENDPOINT = '${API_GATEWAY_URL}/api/v1/events';
 
         console.log('Using API Gateway at:', API_BASE);
+        console.log('SSE Endpoint:', SSE_ENDPOINT);
         
         let eventSource = null;
         let sseConnected = false;

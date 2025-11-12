@@ -41,4 +41,4 @@ USER nginx
 EXPOSE 3000
 
 # Start nginx in foreground
-CMD ["nginx", "-g", "daemon off;"]
+CMD ["/startup.sh"]
