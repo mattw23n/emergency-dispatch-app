@@ -136,6 +136,24 @@ smoke-test-image:
     - sleep 20
     - docker exec mysql-test mysqladmin ping -h localhost -u root -proot --silent || (echo "MySQL not ready" && docker logs mysql-test && exit 1)
     
+    # Create billings table in the database
+    - |
+      docker exec mysql-test mysql -u root -proot billings -e "
+      CREATE TABLE IF NOT EXISTS billings (
+        billing_id INT AUTO_INCREMENT PRIMARY KEY,
+        incident_id VARCHAR(50) NOT NULL,
+        patient_id VARCHAR(50) NOT NULL,
+        amount DECIMAL(10, 2) NOT NULL,
+        status VARCHAR(50) DEFAULT 'pending',
+        insurance_verified BOOLEAN DEFAULT FALSE,
+        payment_status VARCHAR(50) DEFAULT 'pending',
+        stripe_payment_intent_id VARCHAR(255),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_incident_id (incident_id),
+        INDEX idx_patient_id (patient_id)
+      );"
+    
     # Wait for RabbitMQ to be ready
     - echo "Waiting for RabbitMQ to start..."
     - sleep 15
@@ -145,7 +163,7 @@ smoke-test-image:
       docker run -d --name billings-test \
         --network billings-test-network \
         -p 5100:5100 \
-        -e db_conn=mysql+mysqlconnector://root:root@mysql-test:3306 \
+        -e db_conn=mysql+mysqlconnector://root:root@mysql-test:3306/billings \
         -e INSURANCE_API_URL=http://mock-insurance:5200/insurance/verify \
         -e RABBITMQ_HOST=rabbitmq-test \
         -e RABBITMQ_PORT=5672 \
