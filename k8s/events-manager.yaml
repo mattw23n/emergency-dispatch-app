@@ -18,9 +18,9 @@ metadata:
   labels:
     app: events-manager
 spec:
-  replicas: 1 #Only one events manager at a time to prevent rabbitmq race condition
-  strategy:
-    type: Recreate
+  replicas: 2 #Only one events manager at a time to prevent rabbitmq race condition
+  # strategy:
+  #   type: Recreate
   selector:
     matchLabels:
       app: events-manager
