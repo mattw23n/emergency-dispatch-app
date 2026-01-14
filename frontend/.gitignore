@@ -1,0 +1,16 @@
+# Build outputs
+*.log
+node_modules/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test reports
+*_report.txt

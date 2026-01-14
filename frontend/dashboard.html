@@ -1,0 +1,1274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CS302 Emergency Services - Event Orchestration Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+        }
+
+        header {
+            background: white;
+            padding: 20px 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+
+        h1 {
+            color: #333;
+            font-size: 28px;
+            margin-bottom: 5px;
+        }
+
+        .subtitle {
+            color: #666;
+            font-size: 14px;
+        }
+
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        .panel {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        .panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #f0f0f0;
+        }
+
+        .panel-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .panel-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        /* Service Architecture Visualization */
+        .architecture-diagram {
+            position: relative;
+            min-height: 500px;
+            padding: 20px;
+        }
+
+        .service-node {
+            position: absolute;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+            cursor: pointer;
+            transition: all 0.3s ease;
+            min-width: 140px;
+            text-align: center;
+        }
+
+        .service-node:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+        }
+
+        .service-node.healthy {
+            border: 3px solid #10b981;
+        }
+
+        .service-node.unhealthy {
+            border: 3px solid #ef4444;
+        }
+
+        .service-node.loading {
+            border: 3px solid #f59e0b;
+        }
+
+        .service-name {
+            font-weight: 600;
+            font-size: 14px;
+            margin-bottom: 5px;
+        }
+
+        .service-port {
+            font-size: 11px;
+            opacity: 0.8;
+        }
+
+        .service-status {
+            font-size: 10px;
+            margin-top: 5px;
+            padding: 2px 6px;
+            background: rgba(255,255,255,0.2);
+            border-radius: 3px;
+        }
+
+        /* Connection lines */
+        svg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .service-node {
+            z-index: 1;
+        }
+
+        .connection-line {
+            stroke: #cbd5e1;
+            stroke-width: 2;
+            fill: none;
+        }
+
+        .connection-line.active {
+            stroke: #10b981;
+            stroke-width: 3;
+            animation: pulse 2s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 0.6; }
+            50% { opacity: 1; }
+        }
+
+        /* Events Manager special styling */
+        .events-manager {
+            background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+            border: 3px solid #fbbf24 !important;
+            font-size: 16px;
+            padding: 20px 25px;
+            min-width: 160px;
+        }
+
+        /* Service Health Dashboard */
+        .health-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+        }
+
+        .health-card {
+            background: #f8fafc;
+            padding: 15px;
+            border-radius: 8px;
+            border-left: 4px solid #94a3b8;
+        }
+
+        .health-card.healthy {
+            border-left-color: #10b981;
+            background: #f0fdf4;
+        }
+
+        .health-card.unhealthy {
+            border-left-color: #ef4444;
+            background: #fef2f2;
+        }
+
+        .health-card.loading {
+            border-left-color: #f59e0b;
+            background: #fffbeb;
+        }
+
+        .health-card-name {
+            font-weight: 600;
+            margin-bottom: 5px;
+            color: #1e293b;
+        }
+
+        .health-card-status {
+            font-size: 12px;
+            color: #64748b;
+        }
+
+        .health-indicator {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 5px;
+        }
+
+        .health-indicator.healthy {
+            background: #10b981;
+            box-shadow: 0 0 8px #10b981;
+        }
+
+        .health-indicator.unhealthy {
+            background: #ef4444;
+            box-shadow: 0 0 8px #ef4444;
+        }
+
+        .health-indicator.loading {
+            background: #f59e0b;
+            box-shadow: 0 0 8px #f59e0b;
+        }
+
+        /* Event Timeline */
+        .timeline {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .timeline-event {
+            background: #f8fafc;
+            padding: 12px;
+            margin-bottom: 10px;
+            border-radius: 6px;
+            border-left: 4px solid #cbd5e1;
+            position: relative;
+            animation: slideIn 0.3s ease-out;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateX(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        .timeline-event.triage {
+            border-left-color: #8b5cf6;
+        }
+
+        .timeline-event.dispatch {
+            border-left-color: #3b82f6;
+        }
+
+        .timeline-event.billing {
+            border-left-color: #10b981;
+        }
+
+        .timeline-event.notification {
+            border-left-color: #f59e0b;
+        }
+
+        .event-time {
+            font-size: 11px;
+            color: #64748b;
+            margin-bottom: 4px;
+        }
+
+        .event-type {
+            font-weight: 600;
+            color: #1e293b;
+            margin-bottom: 4px;
+        }
+
+        .event-details {
+            font-size: 12px;
+            color: #475569;
+        }
+
+        /* Event Flow Visualization */
+        .flow-diagram {
+            background: #f8fafc;
+            padding: 20px;
+            border-radius: 8px;
+            min-height: 400px;
+        }
+
+        .flow-step {
+            background: white;
+            padding: 15px;
+            margin-bottom: 15px;
+            border-radius: 6px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            position: relative;
+        }
+
+        .flow-step::after {
+            content: '↓';
+            position: absolute;
+            bottom: -20px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 20px;
+            color: #cbd5e1;
+        }
+
+        .flow-step:last-child::after {
+            display: none;
+        }
+
+        .flow-step-title {
+            font-weight: 600;
+            color: #1e293b;
+            margin-bottom: 5px;
+        }
+
+        .flow-step-desc {
+            font-size: 12px;
+            color: #64748b;
+        }
+
+        /* Control Panel */
+        .control-panel {
+            grid-column: 1 / -1;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 14px;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-success {
+            background: #10b981;
+            color: white;
+        }
+
+        .btn-warning {
+            background: #f59e0b;
+            color: white;
+        }
+
+        .btn-danger {
+            background: #ef4444;
+            color: white;
+        }
+
+        .btn-info {
+            background: #3b82f6;
+            color: white;
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        /* Legend */
+        .legend {
+            display: flex;
+            gap: 20px;
+            margin-top: 15px;
+            padding: 15px;
+            background: #f8fafc;
+            border-radius: 6px;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+        }
+
+        .legend-color {
+            width: 30px;
+            height: 20px;
+            border-radius: 4px;
+        }
+
+        /* Full width panel */
+        .panel-full {
+            grid-column: 1 / -1;
+        }
+
+        /* Scrollbar styling */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+
+        /* Toast notifications */
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: white;
+            padding: 15px 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            z-index: 1000;
+            animation: slideUp 0.3s ease-out;
+        }
+
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .toast.success {
+            border-left: 4px solid #10b981;
+        }
+
+        .toast.error {
+            border-left: 4px solid #ef4444;
+        }
+
+        .toast.info {
+            border-left: 4px solid #3b82f6;
+        }
+
+        /* SSE Status badge */
+        .sse-status {
+            margin-left: 20px;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 11px;
+            background: #fbbf24;
+            color: #78350f;
+        }
+
+        .sse-status.connected {
+            background: #10b981;
+            color: white;
+        }
+
+        .sse-status.disconnected {
+            background: #ef4444;
+            color: white;
+        }
+
+        /* Additional paragraph styles */
+        .control-note {
+            margin-top: 15px;
+            font-size: 12px;
+            color: #64748b;
+        }
+
+        .control-warning {
+            margin-top: 10px;
+            font-size: 12px;
+            color: #f59e0b;
+        }
+
+        /* Legend color boxes */
+        .legend-events-manager {
+            background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+        }
+
+        .legend-microservices {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+
+        /* Empty state messages */
+        .empty-message {
+            color: #94a3b8;
+            text-align: center;
+            padding: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🚑 Emergency Services Orchestration Dashboard</h1>
+            <p class="subtitle">
+                Real-time monitoring of microservices and event-driven workflows via Events Manager
+                <span id="sseStatus" class="sse-status">
+                    ⏳ Connecting to event stream...
+                </span>
+            </p>
+        </header>
+
+        <div class="dashboard-grid">
+            <!-- Service Architecture Visualization -->
+            <div class="panel panel-full">
+                <div class="panel-header">
+                    <div class="panel-title">📊 Service Architecture &amp; Event Flow</div>
+                    <div class="panel-actions">
+                        <button type="button" class="btn btn-primary" onclick="refreshHealth()">🔄 Refresh</button>
+                    </div>
+                </div>
+                <div class="architecture-diagram" id="architectureDiagram">
+                    <svg id="connectionSvg"></svg>
+                    <!-- Services will be positioned here -->
+                </div>
+                <div class="legend">
+                    <div class="legend-item">
+                        <div class="legend-color legend-events-manager"></div>
+                        <span>Events Manager (Orchestrator)</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color legend-microservices"></div>
+                        <span>Microservices</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="health-indicator healthy"></div>
+                        <span>Healthy</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="health-indicator unhealthy"></div>
+                        <span>Unhealthy</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="health-indicator loading"></div>
+                        <span>Checking...</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Service Health Dashboard -->
+            <div class="panel">
+                <div class="panel-header">
+                    <div class="panel-title">💚 Service Health Status</div>
+                </div>
+                <div class="health-grid" id="healthGrid"></div>
+            </div>
+
+            <!-- Event Flow Scenarios -->
+            <div class="panel">
+                <div class="panel-header">
+                    <div class="panel-title">🔄 Event Orchestration Flows</div>
+                </div>
+                <div class="flow-diagram">
+                    <div class="flow-step">
+                        <div class="flow-step-title">Scenario 1: Triage → Dispatch</div>
+                        <div class="flow-step-desc">
+                            Wearable → Triage (abnormal/emergency) → Events-Manager →
+                            Notification (alert) + Dispatch (ambulance request)
+                        </div>
+                    </div>
+                    <div class="flow-step">
+                        <div class="flow-step-title">Scenario 2: Dispatch Updates</div>
+                        <div class="flow-step-desc">
+                            Dispatch → Events-Manager → Notification (unit assigned, enroute, patient onboard, arrived)
+                        </div>
+                    </div>
+                    <div class="flow-step">
+                        <div class="flow-step-title">Scenario 3: Billing Process</div>
+                        <div class="flow-step-desc">
+                            Events-Manager (on arrival) → Billings → Insurance verification →
+                            Events-Manager → Notification (billing status)
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Event Timeline -->
+            <div class="panel panel-full">
+                <div class="panel-header">
+                    <div class="panel-title">📋 Live Event Timeline</div>
+                    <div class="panel-actions">
+                        <button type="button" class="btn btn-danger" onclick="clearTimeline()">🗑️ Clear</button>
+                    </div>
+                </div>
+                <div class="timeline" id="eventTimeline">
+                    <p class="empty-message">
+                        No events yet. Trigger a test scenario below to see event flow.
+                    </p>
+                </div>
+            </div>
+
+            <!-- Control Panel -->
+            <div class="panel control-panel">
+                <div class="panel-header">
+                    <div class="panel-title">🎮 Real Event Triggers (via API)</div>
+                </div>
+                <div class="button-group">
+                    <button type="button" class="btn btn-success" onclick="triggerTriageEmergency()">
+                        🚨 Trigger Emergency
+                    </button>
+                    <button type="button" class="btn btn-warning" onclick="triggerTriageAbnormal()">
+                        ⚠️ Trigger Abnormal Vitals
+                    </button>
+                    <button type="button" class="btn btn-danger" onclick="resetToNormalMode()">
+                        🔄 Reset Wearable to Normal Mode
+                    </button>
+                </div>
+                <p class="control-note">
+                    <strong>Real Event Flow:</strong> These buttons call actual service APIs that publish to RabbitMQ.
+                    Events flow through AMQP and are processed by Events-Manager.
+                    Monitor RabbitMQ Management UI (localhost:15672) to see real message flow.
+                </p>
+                <p class="control-warning">
+                    <strong>⚠️ Note:</strong> Dashboard shows triggered actions, but actual AMQP events happen in the background.
+                    Check service logs with <code>docker-compose logs -f [service-name]</code> to see real event processing.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Dynamic API base URL - uses current hostname with api-gateway port
+        const API_GATEWAY_URL = '${API_GATEWAY_URL}' || 'http://localhost:30080';
+        const API_BASE = '${API_GATEWAY_URL}/api/v1';
+        const SSE_ENDPOINT = '${API_GATEWAY_URL}/api/v1/events';
+
+        console.log('Using API Gateway at:', API_BASE);
+        console.log('SSE Endpoint:', SSE_ENDPOINT);
+        
+        let eventSource = null;
+        let sseConnected = false;
+        
+        const services = [
+            { 
+                id: 'rabbitmq', 
+                name: 'RabbitMQ', 
+                port: '5672', 
+                endpoint: null,
+                x: 50, 
+                y: 250,
+                description: 'Message Broker'
+            },
+            { 
+                id: 'mysql', 
+                name: 'MySQL', 
+                port: '3306', 
+                endpoint: null,
+                x: 50, 
+                y: 350,
+                description: 'Database'
+            },
+            { 
+                id: 'wearable', 
+                name: 'Wearable', 
+                port: '5000', 
+                endpoint: `${API_BASE}/wearable/health`,
+                x: 250, 
+                y: 50
+            },
+            { 
+                id: 'triage', 
+                name: 'Triage', 
+                port: '5001', 
+                endpoint: `${API_BASE}/triage/health`,
+                x: 450, 
+                y: 50
+            },
+            { 
+                id: 'events-manager', 
+                name: 'Events Manager', 
+                port: '8011', 
+                endpoint: `${API_BASE}/events-manager/health`,
+                x: 600, 
+                y: 250,
+                isEventsManager: true
+            },
+            { 
+                id: 'dispatch', 
+                name: 'Dispatch', 
+                port: '8081', 
+                endpoint: `${API_BASE}/dispatch/health`,
+                x: 850, 
+                y: 150
+            },
+            { 
+                id: 'notification', 
+                name: 'Notification', 
+                port: '8000', 
+                endpoint: `${API_BASE}/notification/health`,
+                x: 850, 
+                y: 250
+            },
+            { 
+                id: 'billings', 
+                name: 'Billings', 
+                port: '5100', 
+                endpoint: `${API_BASE}/billings/health`,
+                x: 850, 
+                y: 350
+            },
+            { 
+                id: 'insurance', 
+                name: 'Insurance', 
+                port: '5200', 
+                endpoint: `${API_BASE}/insurance/health`,
+                x: 1050, 
+                y: 350
+            },
+            { 
+                id: 'events-stream', 
+                name: 'Events Stream', 
+                port: '8090', 
+                endpoint: `${API_BASE}/events-stream/health`,
+                x: 450, 
+                y: 350,
+                description: 'SSE Streaming'
+            }
+        ];
+
+        // Define connections for the architecture diagram
+        const connections = [
+            // RabbitMQ connections
+            { from: 'rabbitmq', to: 'events-manager' },
+            { from: 'rabbitmq', to: 'triage' },
+            { from: 'rabbitmq', to: 'dispatch' },
+            { from: 'rabbitmq', to: 'notification' },
+            { from: 'rabbitmq', to: 'billings' },
+            { from: 'rabbitmq', to: 'events-stream' },
+            
+            // Event flow connections
+            { from: 'wearable', to: 'triage' },
+            { from: 'triage', to: 'events-manager' },
+            { from: 'events-manager', to: 'dispatch' },
+            { from: 'events-manager', to: 'notification' },
+            { from: 'dispatch', to: 'events-manager' },
+            { from: 'billings', to: 'events-manager' },
+            { from: 'events-manager', to: 'billings' },
+            
+            // Database connections
+            { from: 'mysql', to: 'insurance' },
+            { from: 'mysql', to: 'billings' },
+            { from: 'insurance', to: 'billings' }
+        ];
+
+        let serviceHealthStatus = {};
+
+        // Initialize the dashboard
+        function init() {
+            renderArchitectureDiagram();
+            refreshHealth();
+            connectToEventStream();
+            // Auto-refresh health every 10 seconds
+            setInterval(refreshHealth, 10000);
+        }
+
+        // Connect to Server-Sent Events (SSE) for real-time AMQP event streaming
+        function connectToEventStream() {
+            if (eventSource) {
+                eventSource.close();
+            }
+
+            console.log('Connecting to event stream...');
+            eventSource = new EventSource(SSE_ENDPOINT);
+
+            eventSource.onopen = () => {
+                console.log('✓ Connected to event stream');
+                sseConnected = true;
+                
+                // Update status indicator
+                const statusEl = document.getElementById('sseStatus');
+                if (statusEl) {
+                    statusEl.style.background = '#10b981';
+                    statusEl.style.color = '#ffffff';
+                    statusEl.innerHTML = '🟢 Live Event Stream Connected';
+                }
+                
+                showToast('📡 Connected to real-time event stream!', 'success');
+            };
+
+            eventSource.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    console.log('Received event:', data);
+                    
+                    if (data.type === 'connection') {
+                        console.log('Connection established:', data.message);
+                        return;
+                    }
+
+                    // Process real AMQP event
+                    handleRealTimeEvent(data);
+                } catch (error) {
+                    console.error('Error parsing event:', error);
+                }
+            };
+
+            eventSource.onerror = (error) => {
+                console.error('EventSource error:', error);
+                sseConnected = false;
+                
+                // Update status indicator
+                const statusEl = document.getElementById('sseStatus');
+                if (statusEl) {
+                    statusEl.style.background = '#ef4444';
+                    statusEl.style.color = '#ffffff';
+                    statusEl.innerHTML = '🔴 Event Stream Disconnected';
+                }
+                
+                if (eventSource.readyState === EventSource.CLOSED) {
+                    showToast('⚠️ Event stream disconnected. Reconnecting in 5s...', 'error');
+                    setTimeout(connectToEventStream, 5000);
+                }
+            };
+        }
+
+        // Handle real-time AMQP events from SSE
+        function handleRealTimeEvent(event) {
+            const { type, routing_key, data, timestamp } = event;
+            
+            // Format event for timeline based on routing key and data
+            let title = '';
+            let details = '';
+            let eventType = type;
+
+            if (routing_key.includes('wearable.vitals')) {
+                const metrics = data.metrics || {};
+                title = '💓 Wearable Vitals Published';
+                details = `Patient ${data.patient_id}: HR=${metrics.heartRateBpm}, SpO2=${metrics.spO2Percentage}%, Temp=${metrics.bodyTemperatureCelsius}°C`;
+                eventType = 'triage'; // Show as purple for triage pipeline
+            } 
+            else if (routing_key.includes('triage.status')) {
+                const status = data.status || 'unknown';
+                const emoji = status === 'emergency' ? '🚨' : status === 'abnormal' ? '⚠️' : 'ℹ️';
+                title = `${emoji} Triage: ${status.toUpperCase()}`;
+                details = `Incident ${data.incident_id}: Status changed to ${status}`;
+                eventType = 'triage';
+            }
+            else if (routing_key.includes('dispatch.unit_assigned')) {
+                title = '🚑 Ambulance Assigned';
+                details = `Unit ${data.unit_id} assigned to ${data.hospital_name} - ETA ${data.eta_minutes} min`;
+                eventType = 'dispatch';
+            }
+            else if (routing_key.includes('dispatch.enroute')) {
+                title = '🚗 Ambulance En Route';
+                details = `Unit ${data.unit_id} heading to hospital - ETA ${data.eta_minutes} min`;
+                eventType = 'dispatch';
+            }
+            else if (routing_key.includes('dispatch.patient_onboard')) {
+                title = '👤 Patient Onboard';
+                details = `Patient ${data.patient_id} loaded into ambulance ${data.unit_id}`;
+                eventType = 'dispatch';
+            }
+            else if (routing_key.includes('dispatch.patient_vitals')) {
+                const vitals = data.vitals || {};
+                title = '📊 Patient Vitals Update';
+                details = `HR=${vitals.heart_rate}, BP=${vitals.blood_pressure}, SpO2=${vitals.spo2}%, Temp=${vitals.temperature}°C`;
+                eventType = 'dispatch';
+            }
+            else if (routing_key.includes('dispatch.arrived_at_hospital')) {
+                title = '🏥 Arrived at Hospital';
+                details = `Ambulance ${data.unit_id} reached ${data.hospital_id} - Patient transferred`;
+                eventType = 'dispatch';
+            }
+            else if (routing_key.includes('notification')) {
+                title = '📱 Notification Sent';
+                details = `Alert sent for ${routing_key}`;
+                eventType = 'notification';
+            }
+            else if (routing_key.includes('billing')) {
+                title = '💳 Billing Event';
+                details = `Billing process: ${routing_key}`;
+                eventType = 'billing';
+            }
+            else {
+                title = `📨 ${routing_key}`;
+                details = JSON.stringify(data).substring(0, 100);
+            }
+
+            // Add to timeline
+            addEvent(eventType, title, details);
+        }
+
+        // Render the architecture diagram
+        function renderArchitectureDiagram() {
+            const diagram = document.getElementById('architectureDiagram');
+            const svg = document.getElementById('connectionSvg');
+            
+            // Clear existing content
+            while (diagram.children.length > 1) {
+                diagram.removeChild(diagram.lastChild);
+            }
+            svg.innerHTML = '';
+
+            // Draw connection lines
+            connections.forEach(conn => {
+                const fromService = services.find(s => s.id === conn.from);
+                const toService = services.find(s => s.id === conn.to);
+                
+                if (fromService && toService) {
+                    const line = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                    const fromX = fromService.x + 70;
+                    const fromY = fromService.y + 25;
+                    const toX = toService.x + 70;
+                    const toY = toService.y + 25;
+                    
+                    // Create curved path
+                    const midX = (fromX + toX) / 2;
+                    const d = `M ${fromX} ${fromY} Q ${midX} ${fromY}, ${midX} ${(fromY + toY) / 2} T ${toX} ${toY}`;
+                    
+                    line.setAttribute('d', d);
+                    line.setAttribute('class', 'connection-line');
+                    svg.appendChild(line);
+                }
+            });
+
+            // Render service nodes
+            services.forEach(service => {
+                const node = document.createElement('div');
+                node.className = `service-node ${service.isEventsManager ? 'events-manager' : ''} loading`;
+                node.id = `service-${service.id}`;
+                node.style.left = `${service.x}px`;
+                node.style.top = `${service.y}px`;
+                
+                node.innerHTML = `
+                    <div class="service-name">${service.name}</div>
+                    <div class="service-port">${service.description || `Port: ${service.port}`}</div>
+                    <div class="service-status">Checking...</div>
+                `;
+                
+                node.onclick = () => showServiceDetails(service);
+                diagram.appendChild(node);
+            });
+        }
+
+        // Refresh health status of all services
+        async function refreshHealth() {
+            const healthGrid = document.getElementById('healthGrid');
+            healthGrid.innerHTML = '';
+
+            for (const service of services) {
+                if (!service.endpoint) {
+                    // Infrastructure services (RabbitMQ, MySQL)
+                    serviceHealthStatus[service.id] = 'healthy';
+                    updateServiceNode(service.id, 'healthy');
+                    addHealthCard(service, 'healthy', 'Running');
+                    continue;
+                }
+
+                try {
+                    const response = await fetch(service.endpoint, {
+                        method: 'GET',
+                        mode: 'cors',
+                        cache: 'no-cache'
+                    });
+                    
+                    if (response.ok) {
+                        serviceHealthStatus[service.id] = 'healthy';
+                        updateServiceNode(service.id, 'healthy');
+                        addHealthCard(service, 'healthy', 'Healthy');
+                    } else {
+                        serviceHealthStatus[service.id] = 'unhealthy';
+                        updateServiceNode(service.id, 'unhealthy');
+                        addHealthCard(service, 'unhealthy', `Error ${response.status}`);
+                    }
+                } catch (error) {
+                    serviceHealthStatus[service.id] = 'unhealthy';
+                    updateServiceNode(service.id, 'unhealthy');
+                    addHealthCard(service, 'unhealthy', 'Unreachable');
+                }
+            }
+        }
+
+        // Update service node appearance
+        function updateServiceNode(serviceId, status) {
+            const node = document.getElementById(`service-${serviceId}`);
+            if (node) {
+                node.className = `service-node ${serviceId === 'events-manager' ? 'events-manager' : ''} ${status}`;
+                const statusDiv = node.querySelector('.service-status');
+                if (statusDiv) {
+                    statusDiv.textContent = status === 'healthy' ? '✓ Healthy' : 
+                                           status === 'unhealthy' ? '✗ Unhealthy' : 'Checking...';
+                }
+            }
+        }
+
+        // Add health card to grid
+        function addHealthCard(service, status, message) {
+            const healthGrid = document.getElementById('healthGrid');
+            const card = document.createElement('div');
+            card.className = `health-card ${status}`;
+            card.innerHTML = `
+                <div class="health-card-name">
+                    <span class="health-indicator ${status}"></span>
+                    ${service.name}
+                </div>
+                <div class="health-card-status">${message}</div>
+            `;
+            healthGrid.appendChild(card);
+        }
+
+        // Show service details
+        function showServiceDetails(service) {
+            const status = serviceHealthStatus[service.id] || 'unknown';
+            showToast(`
+                <strong>${service.name}</strong><br>
+                Port: ${service.port}<br>
+                Status: ${status}<br>
+                ${service.endpoint ? `Endpoint: ${service.endpoint}` : 'Infrastructure Service'}
+            `, 'info');
+        }
+
+        // Add event to timeline
+        function addEvent(type, title, details) {
+            const timeline = document.getElementById('eventTimeline');
+            
+            // Remove placeholder if exists
+            if (timeline.querySelector('p')) {
+                timeline.innerHTML = '';
+            }
+
+            const event = document.createElement('div');
+            event.className = `timeline-event ${type}`;
+            event.innerHTML = `
+                <div class="event-time">${new Date().toLocaleTimeString()}</div>
+                <div class="event-type">${title}</div>
+                <div class="event-details">${details}</div>
+            `;
+            
+            timeline.insertBefore(event, timeline.firstChild);
+
+            // Limit to 50 events
+            while (timeline.children.length > 50) {
+                timeline.removeChild(timeline.lastChild);
+            }
+
+            // Highlight connections
+            highlightFlow(type);
+        }
+
+        // Highlight event flow
+        function highlightFlow(type) {
+            const svg = document.getElementById('connectionSvg');
+            const lines = svg.querySelectorAll('.connection-line');
+            
+            // Remove all active classes
+            lines.forEach(line => line.classList.remove('active'));
+
+            // Add active class based on event type
+            // This is a simplified visualization
+            setTimeout(() => {
+                lines.forEach(line => line.classList.remove('active'));
+            }, 2000);
+        }
+
+        // Clear timeline
+        function clearTimeline() {
+            const timeline = document.getElementById('eventTimeline');
+            timeline.innerHTML = `
+                <p class="empty-message">
+                    No events yet. Trigger a test scenario below to see event flow.
+                </p>
+            `;
+        }
+
+        // Show toast notification
+        function showToast(message, type = 'info') {
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.innerHTML = message;
+            document.body.appendChild(toast);
+
+            setTimeout(() => {
+                toast.remove();
+            }, 4000);
+        }
+
+        // Test event triggers - These call the REAL service APIs
+        async function triggerTriageEmergency() {
+            try {
+                addEvent('triage', '🚨 Triggering Emergency Scenario', 
+                    'Sending emergency vitals to wearable service...');
+                
+                showToast('Switching wearable to EMERGENCY mode...', 'info');
+
+                // Call the real wearable service to change scenario to emergency
+                const response = await fetch(`${API_BASE}/wearable/scenario`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ scenario: 'emergency' })
+                });
+
+                if (response.ok) {
+                    const result = await response.json();
+                    addEvent('triage', '🚨 Wearable in EMERGENCY Mode', 
+                        `Wearable will now publish emergency vitals to RabbitMQ → Triage will detect and trigger dispatch`);
+                    showToast('✅ Emergency scenario activated! Watch for real events in the next 10 seconds.', 'success');
+                } else {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+            } catch (error) {
+                addEvent('triage', '❌ Error Triggering Emergency', 
+                    `Failed to switch wearable mode: ${error.message}`);
+                showToast(`Error: ${error.message}`, 'error');
+            }
+        }
+
+        async function triggerTriageAbnormal() {
+            try {
+                addEvent('triage', '⚠️ Triggering Abnormal Scenario', 
+                    'Sending abnormal vitals to wearable service...');
+                
+                showToast('Switching wearable to ABNORMAL mode...', 'info');
+
+                // Call the real wearable service to change scenario to abnormal
+                const response = await fetch(`${API_BASE}/wearable/scenario`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ scenario: 'abnormal' })
+                });
+
+                if (response.ok) {
+                    const result = await response.json();
+                    addEvent('triage', '⚠️ Wearable in ABNORMAL Mode', 
+                        `Wearable will now publish abnormal vitals to RabbitMQ → Triage will detect and send notifications`);
+                    showToast('✅ Abnormal scenario activated! Watch for real events in the next 10 seconds.', 'success');
+                } else {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+            } catch (error) {
+                addEvent('triage', '❌ Error Triggering Abnormal', 
+                    `Failed to switch wearable mode: ${error.message}`);
+                showToast(`Error: ${error.message}`, 'error');
+            }
+        }
+
+        async function triggerDispatchRequest() {
+            try {
+                addEvent('dispatch', '🚑 Triggering Direct Ambulance Request', 
+                    'Publishing request_ambulance command to RabbitMQ...');
+                
+                showToast('Requesting ambulance dispatch...', 'info');
+
+                // Note: Since the dispatch service listens to AMQP, we would need
+                // a REST endpoint that publishes to the dispatch queue.
+                // For now, log that this requires AMQP publisher endpoint
+                addEvent('dispatch', '⚠️ Direct AMQP Publishing Required', 
+                    'This action requires publishing directly to RabbitMQ dispatch.commands queue. ' +
+                    'Consider adding a REST endpoint in dispatch service to trigger this, or use RabbitMQ management UI.');
+                
+                showToast('Note: Direct dispatch requires AMQP access. Use wearable emergency mode instead.', 'info');
+                
+            } catch (error) {
+                addEvent('dispatch', '❌ Error Triggering Dispatch', 
+                    `Failed: ${error.message}`);
+                showToast(`Error: ${error.message}`, 'error');
+            }
+        }
+
+        async function simulateFullWorkflow() {
+            try {
+                showToast('Starting REAL full emergency workflow...', 'success');
+                
+                addEvent('triage', '🎬 Full Workflow Started', 
+                    'Switching wearable to emergency mode → This will trigger the entire cascade');
+
+                // Switch wearable to emergency mode - this triggers the real workflow
+                const response = await fetch(`${API_BASE}/wearable/scenario`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ scenario: 'emergency' })
+                });
+
+                if (response.ok) {
+                    addEvent('triage', '� Wearable Publishing Emergency Vitals', 
+                        'Real emergency vitals will be published to RabbitMQ every 10 seconds');
+                    
+                    addEvent('dispatch', '⏳ Waiting for Triage Classification', 
+                        'Triage service will detect emergency and trigger dispatch...');
+                    
+                    addEvent('notification', '⏳ Monitoring Event Flow', 
+                        'Events-Manager will orchestrate notifications, dispatch, and billing automatically');
+                    
+                    showToast('✅ Full workflow activated! Real events will flow through AMQP. Check RabbitMQ management UI (localhost:15672) to see messages.', 'success');
+                    
+                    // Add reminder to reset after 30 seconds
+                    setTimeout(() => {
+                        showToast('💡 Reminder: Set wearable back to normal mode when done testing', 'info');
+                    }, 30000);
+                } else {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                
+            } catch (error) {
+                addEvent('triage', '❌ Error Starting Workflow', 
+                    `Failed: ${error.message}`);
+                showToast(`Error: ${error.message}`, 'error');
+            }
+        }
+
+        // Add function to reset wearable to normal mode
+        async function resetToNormalMode() {
+            try {
+                showToast('Resetting wearable to normal mode...', 'info');
+                
+                const response = await fetch(`${API_BASE}/wearable/scenario`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ scenario: 'normal' })
+                });
+
+                if (response.ok) {
+                    addEvent('triage', '✅ Wearable Reset to Normal', 
+                        'Wearable will now publish normal vitals');
+                    showToast('✅ Wearable reset to normal mode', 'success');
+                } else {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+            } catch (error) {
+                showToast(`Error resetting: ${error.message}`, 'error');
+            }
+        }
+
+        // Initialize on page load
+        window.onload = init;
+    </script>
+</body>
+</html>
