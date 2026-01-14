@@ -1,0 +1,5 @@
+pytest==8.4.1
+pytest-dependency==0.6.0
+jsonschema==4.17.3
+dotenv==0.9.9
+python-dotenv==1.2.1
