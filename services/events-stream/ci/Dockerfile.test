@@ -1,0 +1,17 @@
+FROM python:3.12-slim
+WORKDIR /usr/src/app
+
+# Copy requirements and install dependencies
+COPY requirements.txt ./
+COPY ci/requirements.test.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.test.txt
+
+# Copy source code (needed for unit tests that import from src)
+COPY src/ ./src/
+
+# Copy test files
+COPY tests/ ./tests/
+
+# Run pytest (runs both integration and unit tests)
+CMD ["python", "-m", "pytest", "tests/", "-v"]

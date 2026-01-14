@@ -1,0 +1,50 @@
+services:
+  ##################################
+  # RabbitMQ for testing
+  ##################################
+  rabbitmq:
+    image: rabbitmq:3-management
+    hostname: rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  ##################################
+  # Events-Stream Service Under Test
+  ##################################
+  events-stream:
+    build:
+      context: ../
+      dockerfile: Dockerfile
+    environment:
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      PORT: 8090
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8090/health').read()"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  ##################################
+  # Pytest on Events-Stream Service
+  ##################################
+  events-stream-pytest:
+    build:
+      context: ../
+      dockerfile: ci/Dockerfile.test
+    depends_on:
+      events-stream:
+        condition: service_healthy
+    environment:
+      EVENTS_STREAM_URL: http://events-stream:8090
+      EVENTS_STREAM_WAIT: 30

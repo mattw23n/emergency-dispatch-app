@@ -1,0 +1,140 @@
+stages:
+  - Static Analysis
+  - Security Testing
+  - Test
+  - Release
+  - Deploy
+
+flake8:
+  stage: Static Analysis
+  image: python:3.12-slim
+  before_script:
+    - python -V
+    - python -m pip install flake8
+  script:
+    - flake8 src | tee flake8_report.txt
+  artifacts:
+    when: on_failure
+    paths:
+      - flake8_report.txt
+
+pylint:
+  stage: Static Analysis
+  image: python:3.12-slim
+  before_script:
+    - python -V
+    - python -m pip install -r requirements.txt
+    - python -m pip install pylint
+  script:
+    - pylint --fail-under=7 src | tee pylint_report.txt
+  artifacts:
+    when: always
+    paths:
+      - pylint_report.txt
+
+semgrep:
+  stage: Security Testing
+  image: returntocorp/semgrep
+  script: ["semgrep ci --config p/owasp-top-ten"]
+
+trivy:
+  stage: Security Testing
+  image:
+    name: aquasec/trivy:latest
+    entrypoint: [""]     # override entrypoint so we call trivy directly
+  script: ["trivy fs --severity CRITICAL,HIGH ."]
+
+gitleaks:
+  stage: Security Testing
+  image:
+    name: zricethezav/gitleaks:latest
+    entrypoint: [""]  # override entrypoint so we call gitleaks directly
+  script: ["gitleaks detect --source . --no-git -v"]
+
+unit-tests:
+  stage: Test
+  image: python:3.12-slim
+  before_script:
+    - python -V
+    - python -m pip install -r requirements.txt
+    - python -m pip install pytest pytest-cov requests
+  script:
+    - python -m pytest tests/test_unit.py -v --cov=src --cov-report=xml
+  artifacts:
+    when: always
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: coverage.xml
+  coverage: '/^TOTAL\s+\d+\s+\d+\s+(\d+\.\d+)%$/'
+
+integration-tests:
+  stage: Test
+  image: docker:28.3.2
+  services:
+    - docker:28.3.2-dind
+  before_script:
+    - docker info
+  script:
+    - docker compose -f ci/compose.test.yaml up --exit-code-from events-stream-pytest
+
+# based on: https://gitlab.com/gitlab-org/gitlab/-/blob/master/lib/gitlab/ci/templates/Docker.gitlab-ci.yml
+release-image:
+  stage: Release
+  image: docker:28.3.2
+  services:
+    - docker:28.3.2-dind
+  before_script:
+    - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" $CI_REGISTRY
+  script:
+    - docker build --pull -t "$CI_REGISTRY_IMAGE/$CI_COMMIT_BRANCH:latest" -t "$CI_REGISTRY_IMAGE/$CI_COMMIT_BRANCH:$CI_COMMIT_SHA" .
+    - docker push "$CI_REGISTRY_IMAGE/$CI_COMMIT_BRANCH" --all-tags
+
+
+update_gitops_manifest:
+  stage: Deploy
+  image: alpine:latest
+  variables:
+    GIT_STRATEGY: none
+  before_script:
+    - apk add --no-cache git yq
+    - git config --global user.email "gitlab-ci@${CI_PROJECT_PATH}.com"
+    - git config --global user.name "GitLab CI Bot"
+  script:
+    - IMAGE_NAME="${CI_REGISTRY_IMAGE}/$CI_COMMIT_BRANCH:${CI_COMMIT_SHA}"
+
+    # Extract the service name from the project name and convert to lowerclass
+    - SERVICE_NAME=$(echo "$CI_PROJECT_NAME" | tr '[:upper:]' '[:lower:]')
+    - YAML_FILE="${SERVICE_NAME}.yaml"
+
+    # Debugging outputs
+    # - echo "Service name= $SERVICE_NAME"
+    # - echo "YAML file= $YAML_FILE"
+
+    # Clone k8s repo
+    - git clone "https://oauth2:${GITLAB_TOKEN}@gitlab.com/cs302-2025/g2-team5/k8s.git" gitops-repo
+    - cd gitops-repo
+    - git checkout main
+
+    # Debugging outputs
+    # - echo "repo contents:"
+    # - ls -la
+
+    # Check if the YAML file exists
+    - |
+      if [ ! -f "$YAML_FILE" ]; then
+        echo "Error: $YAML_FILE not found in k8s repository!"
+        echo "Available files:"
+        ls -la *.yaml || echo "No YAML files found"
+        exit 1
+      fi
+
+    - echo "Updating $YAML_FILE with image= $IMAGE_NAME"
+    - yq e '(select(.kind == "Deployment") | .spec.template.spec.containers[0].image) = "'$IMAGE_NAME'"' -i "$YAML_FILE"
+    - git add "$YAML_FILE"
+    - git diff --cached --exit-code || (git commit -m "Update $SERVICE_NAME image to $IMAGE_NAME [skip ci]" && git push origin main)
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+      when: on_success
+  dependencies:
+    - release-image
