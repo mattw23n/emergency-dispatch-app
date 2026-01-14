@@ -1,0 +1,51 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: wearable
+spec:
+  type: NodePort
+  selector:
+    app: wearable
+  ports:
+    - protocol: TCP
+      port: 5000
+      targetPort: 5000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wearable
+  labels:
+    app: wearable
+spec:
+  replicas: 1 #Only one mocked wearable at a time
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: wearable
+  template:
+    metadata:
+      labels:
+        app: wearable
+    spec:
+      containers:
+        - name: wearable
+          image: registry.gitlab.com/cs302-2025/g2-team5/services/wearable/main:572b3a83e578d8fe30ebfb3884ac1dc1c234c9a2
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 5000
+          envFrom:
+            - secretRef:
+                name: env-vars-secret
+            - configMapRef:
+                name: env-vars-configmap
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 5000
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 5
+      imagePullSecrets:
+        - name: gitlab-registry-access-g2t5

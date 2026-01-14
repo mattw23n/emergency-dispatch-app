@@ -1,0 +1,28 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: env-vars-configmap
+data:
+  stage: production-k8s
+  insurance_service_url: http://localhost:9000/api/v1
+  insurance_service_url_internal: http://insurance:5200
+
+  billings_service_url: http://localhost:9000/api/v1
+  billings_service_url_internal: http://billings:5100
+
+  triage_service_url: http://localhost:9000/api/v1
+  triage_service_url_internal: http://triage:5001
+
+  wearable_service_url: http://localhost:9000/api/v1
+  wearable_service_url_internal: http://wearable:5000
+
+  dispatch_service_url: http://localhost:9000/api/v1
+  dispatch_service_url_internal: http://dispatch:8081
+
+  notification_service_url: http://localhost:9000/api/v1
+  notification_service_url_internal: http://notification:8000
+
+  events_manager_service_url: http://localhost:9000/api/v1
+  events_manager_service_url_internal: http://events-manager:8011
+
+
