@@ -1,0 +1,40 @@
+services:
+  ##################################
+  # RabbitMQ for integration tests
+  ##################################
+  rabbitmq:
+    image: rabbitmq:3-management
+    hostname: rabbitmq
+    restart: always
+    environment:
+      RABBITMQ_DEFAULT_USER: ciuser
+      RABBITMQ_DEFAULT_PASS: cipass
+      RABBITMQ_DEFAULT_VHOST: /ci
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 2s
+      timeout: 2s
+      retries: 60
+      start_period: 8s
+
+  ##################################
+  # Pytest on events-manager service
+  ##################################
+  events-manager-pytest:
+    build:
+      context: ../
+      dockerfile: ci/Dockerfile.test
+    environment:
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USER: ciuser
+      RABBITMQ_PASSWORD: cipass
+      RABBITMQ_VHOST: /ci
+      AMQP_EXCHANGE_NAME: amqp.topic
+      AMQP_EXCHANGE_TYPE: topic
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
